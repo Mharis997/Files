@@ -27,6 +27,18 @@ import java.util.Locale
 
 data class VideoSpec(val name: String, val width: Int, val height: Int)
 
+/** H.264 bitrate for one file. */
+fun videoBitrate(w: Int, h: Int, fps: Int) = when {
+    w * h > 4_000_000 -> if (fps > 30) 60_000_000 else 45_000_000 // 4K
+    fps > 30 -> 24_000_000
+    else -> 16_000_000
+}
+
+/** Storage for one minute of both files with audio, in MB. */
+fun megabytesPerMinute(w: Int, h: Int, fps: Int) = 2L * (videoBitrate(w, h, fps) + AUDIO_BITRATE) * 60 / 8 / 1_000_000
+
+const val AUDIO_BITRATE = 128_000
+
 /**
  * One H.264 encoder per [VideoSpec] and one AAC encoder (mic) whose samples go into every file.
  * [useBootTimeClock] must match the video timestamps' clock for A/V sync.
@@ -102,7 +114,7 @@ class Recorder(
             setCallback(audioCallback, Handler(audioThread.looper))
             configure(MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, rate, 1).apply {
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-                setInteger(MediaFormat.KEY_BIT_RATE, 128_000)
+                setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE)
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
             }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         }
@@ -146,7 +158,7 @@ class Recorder(
             }, Handler(codecThread.looper))
             configure(MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_BIT_RATE, if (fps > 30) 24_000_000 else 16_000_000)
+                setInteger(MediaFormat.KEY_BIT_RATE, videoBitrate(w, h, fps))
                 setInteger(MediaFormat.KEY_FRAME_RATE, fps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)

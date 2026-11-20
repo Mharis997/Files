@@ -27,13 +27,30 @@ fun crops(
 
 /**
  * Picks the camera stream size from sensor-orientation sizes for [fps].
- * Returns (size, lowDetail): the smallest 4:3 size with short edge >= 1920 (no upscaling to 1080p),
- * otherwise the largest 4:3 size flagged lowDetail, otherwise null.
+ * Returns (size, lowDetail). Normally the smallest 4:3 size with short edge >= 1920 (no upscaling to 1080p),
+ * otherwise the largest 4:3 size. [largest] always takes the largest (for 4K output). lowDetail: short edge < 1920.
  */
-fun chooseSourceSize(sizes: List<Pair<Int, Int>>, fps: Int, minFrameNs: (Pair<Int, Int>) -> Long): Pair<Pair<Int, Int>, Boolean>? {
+fun chooseSourceSize(
+    sizes: List<Pair<Int, Int>>, fps: Int, largest: Boolean = false, minFrameNs: (Pair<Int, Int>) -> Long,
+): Pair<Pair<Int, Int>, Boolean>? {
     val ok = sizes.filter { (w, h) -> w * 3 == h * 4 && minFrameNs(w to h) <= 1_000_000_000L / fps + 1 }
-    ok.filter { min(it.first, it.second) >= 1920 }.minByOrNull { it.first * it.second }?.let { return it to false }
-    return ok.maxByOrNull { it.first * it.second }?.let { it to true }
+    val biggest = ok.maxByOrNull { it.first * it.second }
+    val pick = if (largest) biggest else ok.filter { min(it.first, it.second) >= 1920 }.minByOrNull { it.first * it.second } ?: biggest
+    return pick?.let { it to (min(it.first, it.second) < 1920) }
+}
+
+/**
+ * Tap at ([u], [v]) in a view showing [crop] (u right, v down, 0..1) to a small metering rect
+ * [left, top, right, bottom] in sensor pixels of a [sensorW]x[sensorH] array, for a camera zoomed by [zoom] around its center.
+ */
+fun meterRect(crop: Crop, u: Float, v: Float, mirror: Boolean, zoom: Float, orientation: Int, sensorW: Int, sensorH: Int): IntArray {
+    val x = crop.x + (if (mirror) 1f - u else u) * crop.w
+    val y = crop.y + (1f - v) * crop.h
+    // the zoomed view is the center 1/zoom of the array
+    val zx = 0.5f + (x - 0.5f) / zoom; val zy = 0.5f + (y - 0.5f) / zoom
+    val half = 0.05f / zoom
+    val box = Crop((zx - half).coerceIn(0f, 1f - 2 * half), (zy - half).coerceIn(0f, 1f - 2 * half), 2 * half, 2 * half)
+    return sensorRect(box, orientation, sensorW, sensorH)
 }
 
 /**
@@ -60,17 +77,3 @@ fun sensorRect(crop: Crop, orientation: Int, sensorW: Int, sensorH: Int): IntArr
     }
     return IntArray(4) { f[it].roundToInt() }
 }
-
-/** Share of the camera frame that ends up in at least one of the two files. */
-fun recordedFraction(p: Crop, l: Crop): Float {
-    val ox = max(0f, min(p.x + p.w, l.x + l.w) - max(p.x, l.x))
-    val oy = max(0f, min(p.y + p.h, l.y + l.h) - max(p.y, l.y))
-    return p.w * p.h + l.w * l.h - ox * oy
-}
-
-/**
- * Horizon tilt in degrees from gravity on the screen's x/y axes: 0 when the upright phone is level.
- * NaN when the phone lies too flat for the reading to mean anything.
- */
-fun levelDegrees(gx: Float, gy: Float): Float =
-    if (gx * gx + gy * gy < 9f) Float.NaN else Math.toDegrees(kotlin.math.atan2(gx.toDouble(), gy.toDouble())).toFloat()

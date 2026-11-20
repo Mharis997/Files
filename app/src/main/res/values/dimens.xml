@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- quick settings row; the camera view starts below it -->
-    <dimen name="top_bar">64dp</dimen>
-</resources>

@@ -15,12 +15,11 @@ import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.params.MeteringRectangle
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.media.ImageReader
-import android.media.MediaRecorder
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -31,7 +30,6 @@ import android.view.Surface
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
 
 /** Camera side of the app: one camera, its GL renderer, dual-crop video recording and dual-crop photos. Main thread only. */
 class CameraController(private val context: Context) {
@@ -44,16 +42,15 @@ class CameraController(private val context: Context) {
 
     var listener: Listener? = null
 
-    // Settings survive close/open.
+    // Settings survive close/open. Quality and frame rate come from [Prefs] on every open.
     var front = false; private set
     var fps = 30; private set
+    var uhd = false; private set
     var photoMode = false; private set
     var zoom = 1f; private set
+    var zoomRange = 1f..1f; private set
     var torch = false; private set
-    var torchLevel = 1; private set
-    var portraitX = 0.5f; private set
-    var portraitY = 0.5f; private set
-    var landscapeY = 0.5f; private set
+    private var focus: IntArray? = null // metering rect in sensor pixels, from a tap
 
     private val manager = context.getSystemService(CameraManager::class.java)
     private val main = Handler(Looper.getMainLooper())
@@ -63,15 +60,13 @@ class CameraController(private val context: Context) {
     private var session: CameraCaptureSession? = null
     private var streamSurface: Surface? = null
     private var jpegReader: ImageReader? = null
-    private var previewSurface: Surface? = null
+    private val previewSurfaces = arrayOfNulls<Surface>(2)
     private var chars: CameraCharacteristics? = null
     private var orientation = 90
     private var stream = 4000 to 3000
     var upright = 3000 to 4000; private set
     var lenses = listOf(1f); private set
     var hasFlash = false; private set
-    /** Highest torch brightness step this camera accepts; 1 means brightness can't be changed. */
-    var maxTorchLevel = 1; private set
     private var bootClock = false
     private var recorder: Recorder? = null
     val recording get() = recorder != null
@@ -80,26 +75,35 @@ class CameraController(private val context: Context) {
 
     private fun notice(text: String) { listener?.onNotice(text) }
 
-    fun setPreview(surface: Surface?) {
-        previewSurface = surface
-        renderer?.attachPreview(surface)
+    /** Slot 0 shows the portrait frame, slot 1 the landscape frame. */
+    fun setPreview(slot: Int, surface: Surface?) {
+        previewSurfaces[slot] = surface
+        renderer?.attachPreview(slot, surface)
     }
+
+    val qualityLabel get() = "${if (uhd) "4K" else "1080p"} · $fps fps"
 
     fun open() {
         if (renderer != null) return
+        Prefs(context).let { uhd = it.uhd; fps = if (uhd && it.fps == 60) 30 else it.fps } // 4K tops out at 30 fps: two 4K60 encodes overload most phones
+        focus = null
         val facing = if (front) CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK
         val id = manager.cameraIdList.firstOrNull { manager.getCameraCharacteristics(it).get(LENS_FACING) == facing }
             ?: return notice("No ${if (front) "front" else "back"} camera found.")
         val c = manager.getCameraCharacteristics(id)
         chars = c
+        if (fps != 30 && c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.none { it.upper == fps } == true) {
+            notice("$fps fps isn't available on this camera; using 30 fps.")
+            fps = 30
+        }
         val map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
         val sizes = map.getOutputSizes(SurfaceTexture::class.java).map { it.width to it.height }
         val minNs = { s: Pair<Int, Int> -> map.getOutputMinFrameDuration(SurfaceTexture::class.java, Size(s.first, s.second)) }
-        var choice = chooseSourceSize(sizes, fps, minNs)
+        var choice = chooseSourceSize(sizes, fps, uhd, minNs)
         if (choice == null && fps == 60) {
             notice("60 fps isn't available on this camera; using 30 fps.")
             fps = 30
-            choice = chooseSourceSize(sizes, fps, minNs)
+            choice = chooseSourceSize(sizes, fps, uhd, minNs)
         }
         val (size, lowDetail) = choice ?: return notice("This camera has no 4:3 video stream.")
         if (lowDetail) notice("Lower detail at $fps fps: camera stream is ${size.first}×${size.second}.")
@@ -112,7 +116,7 @@ class CameraController(private val context: Context) {
 
         val r = GlRenderer()
         renderer = r
-        r.attachPreview(previewSurface)
+        previewSurfaces.forEachIndexed { i, s -> r.attachPreview(i, s) }
         applyCrops()
         r.surfaceTexture.setDefaultBufferSize(size.first, size.second)
         val st = Surface(r.surfaceTexture)
@@ -128,13 +132,14 @@ class CameraController(private val context: Context) {
             jpegReader = reader
             outputs += reader.surface
         }
-        val zoomRange = if (Build.VERSION.SDK_INT >= 30) c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE) else null
+        val zr = c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
+        zoomRange = (zr?.lower ?: 1f)..(zr?.upper ?: 1f).coerceAtMost(10f)
         lenses = buildList {
-            if (zoomRange != null && zoomRange.lower < 0.95f) add(zoomRange.lower)
+            if (zoomRange.start < 0.95f) add(zoomRange.start)
             add(1f)
-            if (zoomRange != null && zoomRange.upper >= 3f) add(3f)
+            if (zoomRange.endInclusive >= 3f) add(3f)
         }
-        zoom = zoom.coerceIn(zoomRange?.lower ?: 1f, zoomRange?.upper ?: 1f)
+        zoom = zoom.coerceIn(zoomRange)
 
         try {
             manager.openCamera(id, object : CameraDevice.StateCallback() {
@@ -148,9 +153,6 @@ class CameraController(private val context: Context) {
                                 session = s
                                 updateRequest()
                                 hasFlash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-                                maxTorchLevel = if (Build.VERSION.SDK_INT >= 35)
-                                    c.get(CameraCharacteristics.FLASH_TORCH_STRENGTH_MAX_LEVEL) ?: 1 else 1
-                                torchLevel = torchLevel.coerceIn(1, maxTorchLevel)
                                 listener?.onReady(upright.first, upright.second, lenses, hasFlash)
                             }
                             override fun onConfigureFailed(s: CameraCaptureSession) = notice("Camera setup failed at this setting.")
@@ -188,26 +190,24 @@ class CameraController(private val context: Context) {
     private fun restart() { if (isOpen) { close(); open() } }
 
     fun setFront(value: Boolean) { front = value; zoom = 1f; restart() }
-    fun setFps(value: Int) { fps = value; restart() }
     fun setPhotoMode(value: Boolean) { photoMode = value; restart() }
-    fun setZoom(value: Float) { zoom = value; updateRequest() }
+    fun setZoom(value: Float) { zoom = value.coerceIn(zoomRange); focus = null; updateRequest() }
     fun setTorch(value: Boolean) { torch = value; updateRequest() }
-    fun setTorchLevel(value: Int) { torchLevel = value.coerceIn(1, maxTorchLevel); updateRequest() }
 
-
-    fun setPositions(portraitX: Float, portraitY: Float, landscapeY: Float) {
-        this.portraitX = portraitX.coerceIn(0f, 1f)
-        this.portraitY = portraitY.coerceIn(0f, 1f)
-        this.landscapeY = landscapeY.coerceIn(0f, 1f)
-        applyCrops()
+    /** Focus and exposure on a tap at ([u], [v]) of the portrait view (0..1, v down). */
+    fun focusAt(u: Float, v: Float) {
+        val c = chars ?: return
+        val a = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
+        focus = meterRect(currentCrops().first, u, v, front, zoom, orientation, a.width(), a.height())
+        updateRequest()
     }
 
-    fun currentCrops() = crops(upright.first, upright.second, portraitX, portraitY, landscapeY)
+    fun currentCrops() = crops(upright.first, upright.second)
 
     private fun applyCrops() {
         val (p, l) = currentCrops()
         // the preview is mirrored for the front camera; files are not
-        renderer?.setCrops(FULL, listOf(p, l), mirrorOutputs = front)
+        renderer?.setCrops(listOf(p, l), listOf(p, l), mirrorOutputs = front)
     }
 
     private fun fpsRange() = chars?.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.let { r ->
@@ -215,9 +215,13 @@ class CameraController(private val context: Context) {
     }
 
     private fun CaptureRequest.Builder.common() {
-        if (Build.VERSION.SDK_INT >= 30) set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom)
+        set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom)
         set(CaptureRequest.FLASH_MODE, if (torch) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF)
-        if (torch && maxTorchLevel > 1 && Build.VERSION.SDK_INT >= 35) set(CaptureRequest.FLASH_STRENGTH_LEVEL, torchLevel)
+        focus?.let { f ->
+            val region = arrayOf(MeteringRectangle(f[0], f[1], f[2] - f[0], f[3] - f[1], MeteringRectangle.METERING_WEIGHT_MAX))
+            if ((chars?.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0) > 0) set(CaptureRequest.CONTROL_AF_REGIONS, region)
+            if ((chars?.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) ?: 0) > 0) set(CaptureRequest.CONTROL_AE_REGIONS, region)
+        }
     }
 
     private fun updateRequest() {
@@ -236,7 +240,8 @@ class CameraController(private val context: Context) {
         val r = renderer ?: return false
         if (recording || photoMode) return false
         lateinit var rec: Recorder
-        rec = Recorder(context, listOf(VideoSpec("portrait", 1080, 1920), VideoSpec("landscape", 1920, 1080)),
+        val (short, long) = if (uhd) 2160 to 3840 else 1080 to 1920
+        rec = Recorder(context, listOf(VideoSpec("portrait", short, long), VideoSpec("landscape", long, short)),
             fps, bootClock) { uris, ok ->
             listener?.onSaved(uris, ok)
             if (recorder === rec) { // an encoder failed mid-take: the recorder already cleaned up
@@ -246,7 +251,7 @@ class CameraController(private val context: Context) {
             }
         }
         val surfaces = try { rec.start() } catch (e: Exception) {
-            notice("Could not start recording: ${e.message}")
+            notice("Could not start recording at ${qualityLabel}: ${e.message}" + if (uhd) " Try 1080p in Settings." else "")
             return false
         }
         recorder = rec
@@ -314,60 +319,4 @@ class CameraController(private val context: Context) {
         resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
         return uri
     }
-
-    /** What the current setup records, what is left out, and what every camera on the phone can do. */
-    fun describe(): String = buildString {
-        if (chars != null) {
-            val (uw, uh) = upright
-            val (p, l) = currentCrops()
-            val rec = recordedFraction(p, l)
-            appendLine("NOW (${if (front) "front" else "back"} camera, ${"%.1f".format(zoom)}×, $fps fps)")
-            appendLine("Camera stream: ${stream.first}×${stream.second} → upright ${uw}×${uh}")
-            appendLine("Portrait file: ${(p.w * uw).roundToInt()}×${(p.h * uh).roundToInt()} crop → 1080×1920")
-            appendLine("Landscape file: ${(l.w * uw).roundToInt()}×${(l.h * uh).roundToInt()} crop → 1920×1080")
-            appendLine("Recorded: ${(rec * 100).roundToInt()}% of the camera's view")
-            appendLine("Missing: ${((1 - rec) * 100).roundToInt()}% (the dimmed areas in the preview)")
-            appendLine()
-        }
-        for (id in manager.cameraIdList) {
-            val c = manager.getCameraCharacteristics(id)
-            val map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: continue
-            val facing = if (c.get(LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT) "Front" else "Back"
-            appendLine("$facing camera $id")
-            c.get(CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE)?.let {
-                appendLine("  Sensor: ${it.width}×${it.height} (${"%.1f".format(it.width * it.height / 1e6)} MP)")
-            }
-            c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.let { f ->
-                appendLine("  Focal length: ${f.joinToString { "%.1f mm".format(it) }}")
-            }
-            if (Build.VERSION.SDK_INT >= 30) c.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)?.let {
-                appendLine("  Zoom: ${"%.1f".format(it.lower)}× – ${"%.0f".format(it.upper)}×")
-            }
-            if (c.physicalCameraIds.isNotEmpty()) appendLine("  Lenses inside: ${c.physicalCameraIds.size} (${c.physicalCameraIds.joinToString()})")
-            val video = map.getOutputSizes(MediaRecorder::class.java).maxByOrNull { it.width * it.height }
-            video?.let {
-                val fps = 1_000_000_000L / map.getOutputMinFrameDuration(MediaRecorder::class.java, it).coerceAtLeast(1)
-                appendLine("  Max video: ${it.width}×${it.height} @ $fps fps")
-            }
-            val slowMo = map.highSpeedVideoFpsRanges.maxByOrNull { it.upper }
-            slowMo?.let { r ->
-                val s = map.getHighSpeedVideoSizesFor(r).maxByOrNull { it.width * it.height }
-                appendLine("  Slow motion: ${r.upper} fps${s?.let { " at ${it.width}×${it.height}" } ?: ""}")
-            }
-            val caps = c.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
-            val tenBit = Build.VERSION.SDK_INT >= 33 &&
-                CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_DYNAMIC_RANGE_TEN_BIT in caps
-            appendLine("  10-bit HDR video: ${if (tenBit) "yes" else "no"}")
-            appendLine("  RAW photos: ${if (CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW in caps) "yes" else "no"}")
-            val ois = c.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
-                ?.contains(CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON) == true
-            val eis = c.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
-                ?.contains(CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true
-            appendLine("  Stabilization: optical ${if (ois) "yes" else "no"}, electronic ${if (eis) "yes" else "no"}")
-            appendLine("  Flash: ${if (c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true) "yes" else "no"}")
-            appendLine()
-        }
-        append("DualFrame doesn't use: 4K/8K, slow motion, 10-bit HDR, RAW, stabilization. Each file is 1080p H.264.")
-    }
-
 }

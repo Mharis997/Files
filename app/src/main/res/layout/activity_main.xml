@@ -4,189 +4,223 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- Height set in code to the camera's upright aspect: the full view, with both frames drawn over it. -->
+    <!-- The portrait (9:16) file, full width. Height set in code. -->
     <FrameLayout
         android:id="@+id/previewBox"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="top"
-        android:layout_marginTop="@dimen/top_bar">
+        android:layout_gravity="top">
 
         <SurfaceView
             android:id="@+id/preview"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:contentDescription="Camera view. Tap to focus, pinch to zoom." />
 
-        <com.dualframe.recorder.FrameOverlay
-            android:id="@+id/overlay"
+        <com.dualframe.recorder.GridOverlay
+            android:id="@+id/grid"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:visibility="gone" />
 
-        <com.dualframe.recorder.LevelView
-            android:id="@+id/level"
-            android:layout_width="96dp"
-            android:layout_height="28dp"
-            android:layout_gravity="top|center_horizontal"
-            android:layout_marginTop="8dp" />
-
-        <com.dualframe.recorder.LineSlider
-            android:id="@+id/landscapeSlider"
-            android:layout_width="40dp"
-            android:layout_height="200dp"
-            android:layout_gravity="start|bottom"
-            android:layout_marginHorizontal="8dp"
-            android:layout_marginBottom="8dp"
-            android:contentDescription="Moves the landscape frame" />
-
-        <!-- Portrait frame controls, low for the right thumb. The sliders move along one direction only. -->
-        <LinearLayout
-            android:layout_width="144dp"
-            android:layout_height="144dp"
-            android:layout_gravity="end|bottom"
-            android:layout_marginHorizontal="4dp"
-            android:layout_marginBottom="4dp"
-            android:orientation="vertical">
-
-            <LinearLayout
-                android:layout_width="144dp"
-                android:layout_height="112dp"
-                android:orientation="horizontal">
-
-                <com.dualframe.recorder.Joystick
-                    android:id="@+id/joystick"
-                    android:layout_width="112dp"
-                    android:layout_height="112dp" />
-
-                <com.dualframe.recorder.LineSlider
-                    android:id="@+id/portraitV"
-                    android:layout_width="32dp"
-                    android:layout_height="112dp"
-                    android:contentDescription="Moves the portrait frame up or down" />
-            </LinearLayout>
-
-            <com.dualframe.recorder.LineSlider
-                android:id="@+id/portraitH"
-                android:layout_width="112dp"
-                android:layout_height="32dp"
-                android:contentDescription="Moves the portrait frame left or right" />
-        </LinearLayout>
+        <TextView
+            style="@style/Tag"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="14dp"
+            android:layout_marginTop="84dp"
+            android:text="9:16" />
     </FrameLayout>
 
-    <!-- Top: quick settings -->
+    <View
+        android:id="@+id/focusRing"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:background="@drawable/focus_ring"
+        android:visibility="invisible" />
+
+    <!-- Top bar -->
     <LinearLayout
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        android:paddingTop="16dp">
+        android:background="@drawable/scrim_top"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="28dp">
+
+        <ImageButton
+            android:id="@+id/flash"
+            style="@style/RoundIcon"
+            android:contentDescription="Turn light on"
+            android:src="@drawable/ic_flash_off" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp">
+            android:layout_weight="1"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
 
-            <ImageButton
-                android:id="@+id/flash"
-                style="@style/RoundIcon"
-                android:contentDescription="Flash"
-                android:src="@drawable/ic_flash_off" />
-
-            <SeekBar
-                android:id="@+id/seekFlash"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:contentDescription="Flash brightness"
-                android:visibility="invisible" />
-
-            <Chronometer
-                android:id="@+id/timer"
+            <LinearLayout
+                android:id="@+id/recPill"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginHorizontal="8dp"
-                android:textColor="#FFFF4D4D"
-                android:textSize="18sp"
-                android:visibility="invisible" />
+                android:gravity="center_vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="4dp">
+
+                <View
+                    android:id="@+id/recDot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/dot"
+                    android:visibility="gone" />
+
+                <Chronometer
+                    android:id="@+id/timer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:text="00:00:00"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <TextView
-                android:id="@+id/fps"
-                style="@style/Chip"
-                android:background="@drawable/pill"
-                android:contentDescription="Frame rate"
-                android:text="30 FPS" />
+                android:id="@+id/quality"
+                style="@style/Tag"
+                android:layout_marginTop="6dp" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/notice"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/pill"
-            android:gravity="center"
-            android:paddingHorizontal="14dp"
-            android:paddingVertical="6dp"
-            android:textColor="#FFFFD166"
-            android:textSize="13sp"
-            android:visibility="gone" />
+        <ImageButton
+            android:id="@+id/settings"
+            style="@style/RoundIcon"
+            android:contentDescription="Settings"
+            android:src="@drawable/ic_settings" />
     </LinearLayout>
 
-    <ScrollView
-        android:id="@+id/infoPanel"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginTop="@dimen/top_bar"
-        android:layout_marginBottom="200dp"
-        android:background="#D9101418"
-        android:padding="16dp"
-        android:visibility="gone">
+    <TextView
+        android:id="@+id/notice"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginHorizontal="32dp"
+        android:background="@drawable/tag"
+        android:gravity="center"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp"
+        android:textColor="#FFFFFFFF"
+        android:textSize="14sp"
+        android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/infoText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:textColor="#E6FFFFFF"
-            android:textIsSelectable="true"
-            android:textSize="12sp" />
-    </ScrollView>
-
-    <!-- Bottom: camera controls -->
+    <!-- Bottom controls -->
     <LinearLayout
-        android:id="@+id/cameraControls"
+        android:id="@+id/controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
+        android:background="@drawable/scrim_bottom"
         android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:paddingBottom="28dp">
+        android:paddingTop="32dp"
+        android:paddingBottom="20dp">
+
+        <!-- Live view of the landscape (16:9) file. Tap to enlarge. Size set in code. -->
+        <FrameLayout
+            android:id="@+id/card"
+            android:layout_width="160dp"
+            android:layout_height="90dp"
+            android:layout_marginBottom="12dp"
+            android:contentDescription="Landscape view. Tap to enlarge."
+            android:elevation="6dp"
+            android:foreground="@drawable/card_border">
+
+            <TextureView
+                android:id="@+id/cardView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                style="@style/Tag"
+                android:layout_gravity="bottom|start"
+                android:layout_margin="6dp"
+                android:text="16:9" />
+
+            <ImageView
+                android:id="@+id/cardExpand"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="4dp"
+                android:importantForAccessibility="no"
+                android:padding="4dp"
+                android:src="@drawable/ic_expand" />
+        </FrameLayout>
 
         <LinearLayout
             android:id="@+id/lenses"
+            android:orientation="horizontal"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/pill"
+            android:background="@drawable/tag"
             android:padding="3dp" />
 
+        <FrameLayout
+            android:id="@+id/shutter"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:contentDescription="Record"
+            android:focusable="true"
+            android:foreground="@drawable/shutter_ring">
+
+            <View
+                android:id="@+id/shutterInner"
+                android:layout_width="62dp"
+                android:layout_height="62dp"
+                android:layout_gravity="center" />
+        </FrameLayout>
+
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/pill"
-            android:padding="3dp">
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="20dp">
 
-            <TextView android:id="@+id/modePhoto" style="@style/Chip" android:text="PHOTO" />
-            <TextView android:id="@+id/modeVideo" style="@style/Chip" android:text="VIDEO" />
-        </LinearLayout>
+            <ImageView
+                android:id="@+id/gallery"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="#33FFFFFF"
+                android:contentDescription="Open captures"
+                android:scaleType="center"
+                android:src="@drawable/ic_gallery" />
 
-        <LinearLayout style="@style/ShutterRow">
-            <ImageButton android:id="@+id/info" style="@style/RoundIcon" android:contentDescription="Camera capabilities" android:src="@drawable/ic_info" />
-            <FrameLayout android:id="@+id/shutter" style="@style/Shutter" android:contentDescription="Record">
-                <View android:id="@+id/shutterInner" style="@style/ShutterInner" />
-            </FrameLayout>
-            <ImageButton android:id="@+id/flip" style="@style/RoundIcon" android:contentDescription="Switch front or back camera" android:src="@drawable/ic_flip" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginHorizontal="16dp"
+                android:layout_weight="1"
+                android:background="@drawable/seg_group"
+                android:padding="4dp">
+
+                <TextView android:id="@+id/modeVideo" style="@style/Mode" android:text="VIDEO" />
+                <TextView android:id="@+id/modePhoto" style="@style/Mode" android:text="PHOTO" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/flip"
+                style="@style/RoundIcon"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:contentDescription="Switch front or back camera"
+                android:src="@drawable/ic_flip" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

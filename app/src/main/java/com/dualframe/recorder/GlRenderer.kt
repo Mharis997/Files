@@ -29,7 +29,7 @@ class GlRenderer {
     private lateinit var config: EGLConfig
     private lateinit var context: android.opengl.EGLContext
     private lateinit var pbuffer: EGLSurface // keeps the context current when there is no preview
-    private var preview: EGLSurface? = null
+    private val previews = arrayOfNulls<EGLSurface>(2) // 0: main view, 1: second view (e.g. a small card)
     private var program = 0
     private var texId = 0
     private var uTex = 0
@@ -39,7 +39,7 @@ class GlRenderer {
 
     private val stM = FloatArray(16)
     private val m = FloatArray(16)
-    private var previewM = texMatrix(FULL)
+    private var previewMs = Array(2) { texMatrix(FULL) }
     private var outputMs: List<FloatArray> = emptyList()
     private var targets: List<Target> = emptyList()
     private var released = false
@@ -97,13 +97,14 @@ class GlRenderer {
         EGL14.eglCreateWindowSurface(display, config, s, intArrayOf(EGL14.EGL_NONE), 0)
 
     /** Blocks so the caller may destroy the previous preview Surface right after. */
-    fun attachPreview(s: Surface?) = runBlocking {
-        preview?.let { EGL14.eglMakeCurrent(display, pbuffer, pbuffer, context); EGL14.eglDestroySurface(display, it) }
-        preview = s?.let { windowSurface(it) }
+    fun attachPreview(slot: Int, s: Surface?) = runBlocking {
+        previews[slot]?.let { EGL14.eglMakeCurrent(display, pbuffer, pbuffer, context); EGL14.eglDestroySurface(display, it) }
+        previews[slot] = s?.let { windowSurface(it) }
     }
 
-    fun setCrops(previewCrop: Crop, outputs: List<Crop>, mirrorOutputs: Boolean) = handler.post {
-        previewM = texMatrix(previewCrop)
+    /** [previewCrops] per preview slot; [outputs] per encoder surface. */
+    fun setCrops(previewCrops: List<Crop>, outputs: List<Crop>, mirrorOutputs: Boolean) = handler.post {
+        previewMs = Array(2) { texMatrix(previewCrops.getOrElse(it) { FULL }) }
         outputMs = outputs.map { texMatrix(it, mirrorOutputs) }
     }
 
@@ -125,7 +126,7 @@ class GlRenderer {
             released = true
             surfaceTexture.release()
             EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
-            preview?.let { EGL14.eglDestroySurface(display, it) }
+            previews.forEach { it?.let { s -> EGL14.eglDestroySurface(display, s) } }
             targets.forEach { EGL14.eglDestroySurface(display, it.surface) }
             EGL14.eglDestroySurface(display, pbuffer)
             EGL14.eglDestroyContext(display, context)
@@ -139,14 +140,15 @@ class GlRenderer {
         EGL14.eglMakeCurrent(display, pbuffer, pbuffer, context)
         surfaceTexture.updateTexImage()
         surfaceTexture.getTransformMatrix(stM)
-        preview?.let {
-            val size = IntArray(2)
-            EGL14.eglQuerySurface(display, it, EGL14.EGL_WIDTH, size, 0)
-            EGL14.eglQuerySurface(display, it, EGL14.EGL_HEIGHT, size, 1)
-            draw(it, previewM, size[0], size[1], null)
+        val size = IntArray(2)
+        previews.forEachIndexed { i, p ->
+            if (p == null) return@forEachIndexed
+            EGL14.eglQuerySurface(display, p, EGL14.EGL_WIDTH, size, 0)
+            EGL14.eglQuerySurface(display, p, EGL14.EGL_HEIGHT, size, 1)
+            draw(p, previewMs[i], size[0], size[1], null)
         }
         val ts = surfaceTexture.timestamp
-        targets.forEachIndexed { i, t -> draw(t.surface, outputMs.getOrElse(i) { previewM }, t.w, t.h, ts) }
+        targets.forEachIndexed { i, t -> draw(t.surface, outputMs.getOrElse(i) { previewMs[0] }, t.w, t.h, ts) }
     }
 
     private fun draw(target: EGLSurface, cropM: FloatArray, w: Int, h: Int, ptsNs: Long?) {

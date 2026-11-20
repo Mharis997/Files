@@ -78,9 +78,24 @@ class CropMathTest {
         assertArrayEquals(intArrayOf(0, 0, 300, 400), sensorRect(corner, 0, 3000, 4000))
     }
 
-    @Test fun recordedFraction_unionOfBothFrames() {
-        val (p, l) = crops(3000, 4000)
-        // (1687.5*3000 + 3000*1687.5 - 1687.5^2) / 12M
-        assertEquals(0.6064453f, recordedFraction(p, l), 1e-5f)
+    @Test fun chooseSourceSize_largestFor4k() =
+        assertEquals((4000 to 3000) to false,
+            chooseSourceSize(listOf(4000 to 3000, 2560 to 1920, 1440 to 1080), 30, largest = true) { 33_333_333L })
+
+    @Test fun meterRect_centerTapIsSensorCenter() {
+        val (p, _) = crops(3000, 4000)
+        val r = meterRect(p, 0.5f, 0.5f, mirror = false, zoom = 1f, orientation = 90, sensorW = 4000, sensorH = 3000)
+        assertEquals(2000, (r[0] + r[2]) / 2); assertEquals(1500, (r[1] + r[3]) / 2)
+        // 2x zoom halves the box and keeps it centered
+        val z = meterRect(p, 0.5f, 0.5f, mirror = false, zoom = 2f, orientation = 90, sensorW = 4000, sensorH = 3000)
+        assertEquals((r[2] - r[0]) / 2, z[2] - z[0])
+        assertEquals(2000, (z[0] + z[2]) / 2)
+    }
+
+    @Test fun meterRect_topOfViewIsTopOfUprightFrame() {
+        // upright top maps to sensor x=0 side at orientation 90 (see sensorRect test)
+        val (p, _) = crops(3000, 4000)
+        val r = meterRect(p, 0.5f, 0f, mirror = false, zoom = 1f, orientation = 90, sensorW = 4000, sensorH = 3000)
+        assertEquals(true, r[0] < 1000)
     }
 }
