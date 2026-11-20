@@ -19,6 +19,8 @@ class SettingsActivity : Activity() {
         findViewById<View>(R.id.fps24).setOnClickListener { prefs.fps = 24; refresh() }
         findViewById<View>(R.id.fps30).setOnClickListener { prefs.fps = 30; refresh() }
         findViewById<View>(R.id.fps60).setOnClickListener { if (!prefs.uhd) { prefs.fps = 60; refresh() } }
+        findViewById<View>(R.id.volShutter).setOnClickListener { prefs.volumeZoom = false; refresh() }
+        findViewById<View>(R.id.volZoom).setOnClickListener { prefs.volumeZoom = true; refresh() }
         findViewById<Switch>(R.id.grid).apply {
             isChecked = prefs.grid
             setOnCheckedChangeListener { _, on -> prefs.grid = on }
@@ -31,6 +33,7 @@ class SettingsActivity : Activity() {
     private fun refresh() {
         val sel = { id: Int, on: Boolean -> findViewById<View>(id).isSelected = on }
         sel(R.id.q1080, !prefs.uhd); sel(R.id.q4k, prefs.uhd)
+        sel(R.id.volShutter, !prefs.volumeZoom); sel(R.id.volZoom, prefs.volumeZoom)
         val fps = if (prefs.uhd && prefs.fps == 60) 30 else prefs.fps
         sel(R.id.fps24, fps == 24); sel(R.id.fps30, fps == 30); sel(R.id.fps60, fps == 60)
         val (w, h) = if (prefs.uhd) 3840 to 2160 else 1920 to 1080

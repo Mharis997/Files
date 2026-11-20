@@ -15,6 +15,8 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.view.Choreographer
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.Surface
@@ -47,8 +49,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     private lateinit var quality: TextView
     private lateinit var recPill: View
     private lateinit var recDot: View
-    private lateinit var cardExpand: ImageView
-    private var cardBig = false
+    private var volumeZoom = false
+    private var zoomDir = 0 // +1 in, -1 out, 0 idle: set while a volume button is held
+    private var lastZoomFrameNs = 0L
     private lateinit var timer: Chronometer
     private lateinit var notice: TextView
     private lateinit var lensRow: LinearLayout
@@ -91,7 +94,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         quality = findViewById(R.id.quality)
         recPill = findViewById(R.id.recPill)
         recDot = findViewById(R.id.recDot)
-        cardExpand = findViewById(R.id.cardExpand)
         timer = findViewById(R.id.timer)
         notice = findViewById(R.id.notice)
         lensRow = findViewById(R.id.lenses)
@@ -120,9 +122,23 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         rounded(card, 14f); rounded(gallery, 12f)
         previewBox.post { // the portrait file is 9:16: show exactly that, full width
             previewBox.layoutParams = previewBox.layoutParams.apply { height = previewBox.width * 16 / 9 }
-            sizeCard()
+            card.layoutParams = card.layoutParams.apply { height = previewBox.width * 9 / 16 }
+            card.post { placeCard() }
         }
-        card.setOnClickListener { cardBig = !cardBig; sizeCard() }
+        var grabY = 0f
+        var grabT = 0f
+        card.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { grabY = e.rawY; grabT = v.translationY }
+                MotionEvent.ACTION_MOVE -> {
+                    val range = cardRange()
+                    val t = (grabT + e.rawY - grabY).coerceIn(0f, range)
+                    v.translationY = t
+                    cam?.setLandscapeY(if (range > 0) t / range else 0.5f)
+                }
+            }
+            true
+        }
         timer.setOnChronometerTickListener {
             val s = (SystemClock.elapsedRealtime() - it.base).coerceAtLeast(0) / 1000
             it.text = "%02d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60)
@@ -159,12 +175,16 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     override fun onStart() {
         super.onStart()
-        grid.visibility = if (Prefs(this).grid) View.VISIBLE else View.GONE
+        Prefs(this).let {
+            grid.visibility = if (it.grid) View.VISIBLE else View.GONE
+            volumeZoom = it.volumeZoom
+        }
         bindService(Intent(this, RecordService::class.java), connection, BIND_AUTO_CREATE)
         loadLatest()
     }
 
     override fun onStop() {
+        zoomDir = 0
         service?.let {
             it.camera.setPreview(0, null)
             it.camera.setPreview(1, null)
@@ -257,12 +277,43 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         }
     }
 
-    /** Small card above the shutter, or (tapped) the full width of the screen. */
-    private fun sizeCard() {
-        val w = if (cardBig) previewBox.width - (24 * resources.displayMetrics.density).toInt() else previewBox.width * 40 / 100
-        card.layoutParams = card.layoutParams.apply { width = w; height = w * 9 / 16 }
-        cardExpand.setImageResource(if (cardBig) R.drawable.ic_collapse else R.drawable.ic_expand)
-        card.contentDescription = if (cardBig) "Landscape view. Tap to shrink." else "Landscape view. Tap to enlarge."
+    /** How far the landscape view can travel: from the top edge of the screen to the bottom edge. */
+    private fun cardRange() = ((card.parent as View).height - card.height).coerceAtLeast(0).toFloat()
+
+    private fun placeCard() { card.translationY = (cam?.landscapeY ?: 0.5f) * cardRange() }
+
+    // --- volume buttons: shutter, or smooth zoom while held ---
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val dir = when (keyCode) { KeyEvent.KEYCODE_VOLUME_UP -> 1; KeyEvent.KEYCODE_VOLUME_DOWN -> -1; else -> return super.onKeyDown(keyCode, event) }
+        if (event.repeatCount > 0) return true // held: the zoom loop is already running
+        if (!volumeZoom) onShutter()
+        else {
+            if (zoomDir == 0) { lastZoomFrameNs = 0L; Choreographer.getInstance().postFrameCallback(zoomTick) }
+            zoomDir = dir
+        }
+        return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode != KeyEvent.KEYCODE_VOLUME_UP && keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) return super.onKeyUp(keyCode, event)
+        zoomDir = 0
+        return true
+    }
+
+    /** Once per display frame: zoom by the time since the last frame, so the speed is steady whatever the frame rate. */
+    private val zoomTick = object : Choreographer.FrameCallback {
+        override fun doFrame(frameNs: Long) {
+            val c = cam
+            if (zoomDir == 0 || c == null) { zoomDir = 0; return }
+            if (lastZoomFrameNs != 0L) {
+                val dt = (frameNs - lastZoomFrameNs) / 1e9f
+                c.setZoom(c.zoom * kotlin.math.exp(zoomDir * ZOOM_PER_SECOND * dt))
+                refresh()
+            }
+            lastZoomFrameNs = frameNs
+            Choreographer.getInstance().postFrameCallback(this)
+        }
     }
 
     private fun rounded(v: View, radiusDp: Float) {
@@ -292,7 +343,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         flash.visibility = if (c.hasFlash) View.VISIBLE else View.INVISIBLE
         flash.setImageResource(if (c.torch) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
         flash.contentDescription = if (c.torch) "Turn light off" else "Turn light on"
-        quality.text = if (c.photoMode) "PHOTO · 9:16 + 16:9" else c.qualityLabel
+        quality.text = if (c.photoMode) "9:16 · PHOTO" else "9:16 · ${c.qualityLabel}"
         recPill.setBackgroundResource(if (recording) R.drawable.rec_pill else 0)
         recDot.visibility = if (recording) View.VISIBLE else View.GONE
         recPill.visibility = if (c.photoMode) View.INVISIBLE else View.VISIBLE
@@ -327,6 +378,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     // --- CameraController.Listener (forwarded by the service) ---
 
     override fun onReady(uprightW: Int, uprightH: Int, lenses: List<Float>, hasFlash: Boolean) {
+        card.post { placeCard() }
         lensRow.removeAllViews()
         for (z in lenses) {
             lensRow.addView(TextView(this, null, 0, R.style.Lens).apply {
@@ -362,5 +414,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         private const val SHUTTER_RECORD = 0
         private const val SHUTTER_STOP = 1
         private const val SHUTTER_PHOTO = 2
+        private const val ZOOM_PER_SECOND = 0.6f // natural log: about 1.8x per second held
     }
 }

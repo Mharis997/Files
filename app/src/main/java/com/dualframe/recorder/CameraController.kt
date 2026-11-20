@@ -50,6 +50,7 @@ class CameraController(private val context: Context) {
     var zoom = 1f; private set
     var zoomRange = 1f..1f; private set
     var torch = false; private set
+    var landscapeY = 0.5f; private set // 0 = top of the camera's view, 1 = bottom
     private var focus: IntArray? = null // metering rect in sensor pixels, from a tap
 
     private val manager = context.getSystemService(CameraManager::class.java)
@@ -202,7 +203,9 @@ class CameraController(private val context: Context) {
         updateRequest()
     }
 
-    fun currentCrops() = crops(upright.first, upright.second)
+    fun setLandscapeY(value: Float) { landscapeY = value.coerceIn(0f, 1f); applyCrops() }
+
+    fun currentCrops() = crops(upright.first, upright.second, landscapeY = landscapeY)
 
     private fun applyCrops() {
         val (p, l) = currentCrops()

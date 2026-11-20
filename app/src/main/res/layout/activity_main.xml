@@ -22,13 +22,35 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- Live view of the landscape (16:9) file, full width. Drag it up or down, edge to edge,
+         to choose which part of the scene the landscape file records. Height set in code. -->
+    <FrameLayout
+        android:id="@+id/card"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_gravity="top"
+        android:contentDescription="Landscape view. Drag up or down to move the landscape frame."
+        android:foreground="@drawable/card_border">
+
+        <TextureView
+            android:id="@+id/cardView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
 
         <TextView
             style="@style/Tag"
-            android:layout_gravity="top|start"
-            android:layout_marginStart="14dp"
-            android:layout_marginTop="84dp"
-            android:text="9:16" />
+            android:layout_gravity="bottom|start"
+            android:layout_margin="8dp"
+            android:text="16:9" />
+
+        <View
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/grip" />
     </FrameLayout>
 
     <View
@@ -128,38 +150,6 @@
         android:orientation="vertical"
         android:paddingTop="32dp"
         android:paddingBottom="20dp">
-
-        <!-- Live view of the landscape (16:9) file. Tap to enlarge. Size set in code. -->
-        <FrameLayout
-            android:id="@+id/card"
-            android:layout_width="160dp"
-            android:layout_height="90dp"
-            android:layout_marginBottom="12dp"
-            android:contentDescription="Landscape view. Tap to enlarge."
-            android:elevation="6dp"
-            android:foreground="@drawable/card_border">
-
-            <TextureView
-                android:id="@+id/cardView"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
-
-            <TextView
-                style="@style/Tag"
-                android:layout_gravity="bottom|start"
-                android:layout_margin="6dp"
-                android:text="16:9" />
-
-            <ImageView
-                android:id="@+id/cardExpand"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:layout_gravity="bottom|end"
-                android:layout_margin="4dp"
-                android:importantForAccessibility="no"
-                android:padding="4dp"
-                android:src="@drawable/ic_expand" />
-        </FrameLayout>
 
         <LinearLayout
             android:id="@+id/lenses"

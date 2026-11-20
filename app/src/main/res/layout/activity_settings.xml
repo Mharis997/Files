@@ -45,6 +45,15 @@
                 android:textColor="#FFFFD60A"
                 android:textSize="14sp" />
 
+            <TextView style="@style/Section" android:text="CONTROLS" />
+
+            <TextView style="@style/Label" android:text="Volume buttons" />
+            <LinearLayout style="@style/SegGroup">
+                <TextView android:id="@+id/volShutter" style="@style/Seg" android:text="Shutter" />
+                <TextView android:id="@+id/volZoom" style="@style/Seg" android:text="Zoom" />
+            </LinearLayout>
+            <TextView style="@style/Note" android:text="Shutter: either button takes a photo or starts and stops recording.\nZoom: hold up to zoom in, down to zoom out." />
+
             <TextView style="@style/Section" android:text="CAMERA" />
 
             <Switch

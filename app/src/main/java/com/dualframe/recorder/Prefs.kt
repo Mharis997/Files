@@ -12,6 +12,9 @@ class Prefs(context: Context) {
     var fps: Int
         get() = p.getInt("fps", 30)
         set(v) = p.edit().putInt("fps", v).apply()
+    var volumeZoom: Boolean
+        get() = p.getBoolean("volumeZoom", false)
+        set(v) = p.edit().putBoolean("volumeZoom", v).apply()
     var grid: Boolean
         get() = p.getBoolean("grid", false)
         set(v) = p.edit().putBoolean("grid", v).apply()
