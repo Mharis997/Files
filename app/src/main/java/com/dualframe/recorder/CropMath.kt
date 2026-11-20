@@ -32,22 +32,12 @@ fun chooseSourceSize(sizes: List<Pair<Int, Int>>, minFrameNs: (Pair<Int, Int>) -
 }
 
 /**
- * Column-major 4x4: quad UV (0..1) -> upright UV inside [crop] -> sensor UV for [sensorOrientation].
- * Multiply the SurfaceTexture transform on the left.
+ * Column-major 4x4 mapping quad UV (0..1) into [crop] of the upright frame.
+ * Multiply the SurfaceTexture transform on the left; Camera2 already puts the sensor rotation in that transform.
  */
-fun texMatrix(crop: Crop, sensorOrientation: Int): FloatArray {
-    val (cx, cy, cw, ch) = crop
-    // s = a*u + b*v + c ; t = d*u + e*v + f
-    val (abc, def) = when (sensorOrientation) {
-        90 -> floatArrayOf(0f, -ch, 1f - cy) to floatArrayOf(cw, 0f, cx)
-        180 -> floatArrayOf(-cw, 0f, 1f - cx) to floatArrayOf(0f, -ch, 1f - cy)
-        270 -> floatArrayOf(0f, ch, cy) to floatArrayOf(-cw, 0f, 1f - cx)
-        else -> floatArrayOf(cw, 0f, cx) to floatArrayOf(0f, ch, cy)
-    }
-    return floatArrayOf(
-        abc[0], def[0], 0f, 0f,
-        abc[1], def[1], 0f, 0f,
-        0f, 0f, 1f, 0f,
-        abc[2], def[2], 0f, 1f,
-    )
-}
+fun texMatrix(crop: Crop) = floatArrayOf(
+    crop.w, 0f, 0f, 0f,
+    0f, crop.h, 0f, 0f,
+    0f, 0f, 1f, 0f,
+    crop.x, crop.y, 0f, 1f,
+)

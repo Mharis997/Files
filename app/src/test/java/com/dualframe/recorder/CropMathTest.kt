@@ -39,14 +39,10 @@ class CropMathTest {
     @Test fun chooseSourceSize_noneIsNull() =
         assertNull(chooseSourceSize(listOf(1920 to 1080)) { 33_333_333L })
 
-    @Test fun texMatrix_rotations() {
-        val full = Crop(0f, 0f, 1f, 1f)
-        // upright top-left (0,1) -> sensor (0,0) at 90, (1,1) at 270, unchanged at 0
-        assertUv(0f, 0f, texMatrix(full, 90), 0f, 1f)
-        assertUv(1f, 1f, texMatrix(full, 270), 0f, 1f)
-        assertUv(0f, 1f, texMatrix(full, 0), 0f, 1f)
-        assertUv(1f, 0f, texMatrix(full, 180), 0f, 1f)
-        // crop applied before rotation: quad (0,0) -> upright (crop.x, crop.y)
-        assertUv(1f - 0.125f, 0.21875f, texMatrix(Crop(0.21875f, 0.125f, 0.5625f, 0.75f), 90), 0f, 0f)
+    @Test fun texMatrix_mapsQuadIntoCrop() {
+        // SurfaceTexture's own matrix already rotates for the sensor, so this is only the crop
+        val m = texMatrix(Crop(0.21875f, 0.125f, 0.5625f, 0.75f))
+        assertUv(0.21875f, 0.125f, m, 0f, 0f)
+        assertUv(0.78125f, 0.875f, m, 1f, 1f)
     }
 }
