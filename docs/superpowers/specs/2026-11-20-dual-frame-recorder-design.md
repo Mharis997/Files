@@ -49,5 +49,8 @@ Source is committed to branch `ccr-8aff4383-pimgqs`. A debug-signed APK is built
 ## Left to the builder
 Package name (`com.dualframe.recorder`), Gradle/AGP versions, shader details, and threading layout.
 
+## Target device
+Samsung Galaxy S23 (Snapdragon 8 Gen 2). Its main camera streams 4:3 up to 4000×3000, so the shared square is up to 3000 px and both 1080p crops downscale, with no upscaling. Its encoder handles 8K30, so two 1080p30 encodes use a small part of its capacity. The size-selection logic stays generic so other phones still work.
+
 ## Known risk
 There is no physical device here, so the APK compiles and unit tests run, but camera behaviour is only proven on a real phone.
