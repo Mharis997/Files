@@ -4,12 +4,12 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- Height is set equal to width in code: the preview shows the shared square. -->
+    <!-- Height set in code to the camera's upright aspect: the full view, with both frames drawn over it. -->
     <FrameLayout
-        android:id="@+id/square"
+        android:id="@+id/previewBox"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="center">
+        android:layout_gravity="top">
 
         <SurfaceView
             android:id="@+id/preview"
@@ -17,45 +17,212 @@
             android:layout_height="match_parent" />
 
         <com.dualframe.recorder.FrameOverlay
+            android:id="@+id/overlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
     </FrameLayout>
 
-    <LinearLayout
-        android:layout_width="wrap_content"
+    <TextView
+        android:id="@+id/screenHint"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="48dp"
-        android:gravity="center_horizontal"
-        android:orientation="vertical">
+        android:layout_gravity="center"
+        android:gravity="center"
+        android:padding="32dp"
+        android:text="Records the whole screen in portrait, without the status bar and navigation bar.\n\nAfter you start, DualFrame goes to the background. Stop from the notification."
+        android:textColor="#B3FFFFFF"
+        android:textSize="15sp"
+        android:visibility="gone" />
 
-        <Chronometer
-            android:id="@+id/timer"
+    <!-- Top: tabs, then quick settings -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="16dp">
+
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
-            android:textSize="22sp" />
+            android:background="@drawable/pill"
+            android:padding="3dp">
+
+            <TextView android:id="@+id/tabCamera" style="@style/Chip" android:text="CAMERA" />
+            <TextView android:id="@+id/tabScreen" style="@style/Chip" android:text="SCREEN" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp">
+
+            <ImageButton
+                android:id="@+id/flash"
+                style="@style/RoundIcon"
+                android:contentDescription="Flash"
+                android:src="@drawable/ic_flash_off" />
+
+            <TextView
+                android:id="@+id/fps"
+                style="@style/Chip"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/pill"
+                android:contentDescription="Frame rate"
+                android:text="30 FPS" />
+
+            <Chronometer
+                android:id="@+id/timer"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textColor="#FFFF4D4D"
+                android:textSize="18sp"
+                android:visibility="invisible" />
+
+            <ImageButton
+                android:id="@+id/info"
+                style="@style/RoundIcon"
+                android:contentDescription="Camera capabilities"
+                android:src="@drawable/ic_info" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/notice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:background="@drawable/pill"
             android:gravity="center"
-            android:paddingHorizontal="24dp"
-            android:textColor="#FFD166"
-            android:textSize="14sp"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
+            android:textColor="#FFFFD166"
+            android:textSize="13sp"
             android:visibility="gone" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/record"
-        android:layout_width="wrap_content"
+    <ScrollView
+        android:id="@+id/infoPanel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="120dp"
+        android:layout_marginBottom="200dp"
+        android:background="#D9101418"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/infoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textColor="#E6FFFFFF"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+    </ScrollView>
+
+    <!-- Bottom: camera controls -->
+    <LinearLayout
+        android:id="@+id/cameraControls"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="56dp"
-        android:enabled="false"
-        android:minWidth="160dp"
-        android:text="● REC"
-        android:textSize="18sp" />
+        android:layout_gravity="bottom"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingBottom="28dp">
+
+        <LinearLayout
+            android:id="@+id/lenses"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/pill"
+            android:padding="3dp" />
+
+        <LinearLayout style="@style/SliderRow">
+            <TextView style="@style/SliderLabel" android:text="Portrait ↔" android:textColor="#FF4D8DFF" />
+            <SeekBar android:id="@+id/seekPortrait" style="@style/Slider" android:contentDescription="Move portrait frame left or right" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/SliderRow">
+            <TextView style="@style/SliderLabel" android:text="Landscape ↕" android:textColor="#FFFF8A3D" />
+            <SeekBar android:id="@+id/seekLandscape" style="@style/Slider" android:contentDescription="Move landscape frame up or down" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/pill"
+            android:padding="3dp">
+
+            <TextView android:id="@+id/modePhoto" style="@style/Chip" android:text="PHOTO" />
+            <TextView android:id="@+id/modeVideo" style="@style/Chip" android:text="VIDEO" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/ShutterRow">
+            <ImageButton android:id="@+id/gallery" style="@style/RoundIcon" android:contentDescription="Open gallery" android:src="@drawable/ic_gallery" />
+            <FrameLayout android:id="@+id/shutter" style="@style/Shutter" android:contentDescription="Record">
+                <View android:id="@+id/shutterInner" style="@style/ShutterInner" />
+            </FrameLayout>
+            <ImageButton android:id="@+id/flip" style="@style/RoundIcon" android:contentDescription="Switch front or back camera" android:src="@drawable/ic_flip" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Bottom: screen recording controls -->
+    <LinearLayout
+        android:id="@+id/screenControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingBottom="28dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BLUR"
+            android:textColor="#99FFFFFF"
+            android:letterSpacing="0.1"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/pill"
+            android:padding="3dp">
+
+            <TextView android:id="@+id/blurOff" style="@style/Chip" android:text="OFF" />
+            <TextView android:id="@+id/blurBox" style="@style/Chip" android:text="BOX" />
+            <TextView android:id="@+id/blurWhole" style="@style/Chip" android:text="WHOLE" />
+            <TextView android:id="@+id/blurOutside" style="@style/Chip" android:text="OUTSIDE BOX" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/SliderRow">
+            <TextView style="@style/SliderLabel" android:text="Strength" android:textColor="#FFFFFFFF" />
+            <SeekBar android:id="@+id/seekBlur" style="@style/Slider" android:contentDescription="Blur strength" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/showTaps"
+            style="@style/Chip"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/pill"
+            android:text="Show pointer: turn on “Show taps”" />
+
+        <LinearLayout style="@style/ShutterRow">
+            <ImageButton android:id="@+id/gallery2" style="@style/RoundIcon" android:contentDescription="Open gallery" android:src="@drawable/ic_gallery" />
+            <FrameLayout android:id="@+id/screenShutter" style="@style/Shutter" android:contentDescription="Record screen">
+                <View android:id="@+id/screenShutterInner" style="@style/ShutterInner" />
+            </FrameLayout>
+            <View android:layout_width="48dp" android:layout_height="48dp" />
+        </LinearLayout>
+    </LinearLayout>
 </FrameLayout>
