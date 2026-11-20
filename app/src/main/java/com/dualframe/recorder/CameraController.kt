@@ -54,6 +54,9 @@ class CameraController(private val context: Context) {
     var portraitX = 0.5f; private set
     var portraitY = 0.5f; private set
     var landscapeY = 0.5f; private set
+    /** How the user holds the phone (0/90/180/270, OrientationEventListener convention); applied when a take starts. */
+    var deviceRotation = 0
+    private var photoRotation = 0
 
     private val manager = context.getSystemService(CameraManager::class.java)
     private val main = Handler(Looper.getMainLooper())
@@ -236,7 +239,8 @@ class CameraController(private val context: Context) {
         val r = renderer ?: return false
         if (recording || photoMode) return false
         lateinit var rec: Recorder
-        rec = Recorder(context, listOf(VideoSpec("portrait", 1080, 1920), VideoSpec("landscape", 1920, 1080)),
+        val (tallName, wideName) = namesFor(deviceRotation)
+        rec = Recorder(context, listOf(VideoSpec(tallName, 1080, 1920, deviceRotation), VideoSpec(wideName, 1920, 1080, deviceRotation)),
             fps, bootClock) { uris, ok ->
             listener?.onSaved(uris, ok)
             if (recorder === rec) { // an encoder failed mid-take: the recorder already cleaned up
@@ -267,6 +271,7 @@ class CameraController(private val context: Context) {
         val d = camera ?: return
         val s = session ?: return
         val jr = jpegReader ?: return
+        photoRotation = deviceRotation
         val req = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
             addTarget(jr.surface)
             common()
@@ -285,14 +290,16 @@ class CameraController(private val context: Context) {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val uris = ArrayList<Uri>()
         @Suppress("DEPRECATION") val decoder = BitmapRegionDecoder.newInstance(bytes, 0, bytes.size, false)!!
-        val parts = listOf("portrait" to p, "landscape" to l)
+        val (tallName, wideName) = namesFor(photoRotation)
+        val parts = listOf(tallName to p, wideName to l)
         for ((name, crop0) in parts) {
             // crops are set on the preview, which is mirrored for the front camera; the JPEG is not
             val crop = if (front) crop0.copy(x = 1f - crop0.x - crop0.w) else crop0
             val r = sensorRect(crop, orientation, w, h)
             val part = decoder.decodeRegion(Rect(r[0], r[1], r[2], r[3]), null)
-            val upright = if (orientation == 0) part else
-                Bitmap.createBitmap(part, 0, 0, part.width, part.height, Matrix().apply { postRotate(orientation.toFloat()) }, true)
+            val turn = (orientation + photoRotation) % 360 // sensor to screen, then screen to how the phone was held
+            val upright = if (turn == 0) part else
+                Bitmap.createBitmap(part, 0, 0, part.width, part.height, Matrix().apply { postRotate(turn.toFloat()) }, true)
             saveJpeg(upright, "DualFrame_${stamp}_$name.jpg")?.let { uris += it }
             if (upright !== part) upright.recycle()
             part.recycle()
@@ -369,4 +376,7 @@ class CameraController(private val context: Context) {
         }
         append("DualFrame doesn't use: 4K/8K, slow motion, 10-bit HDR, RAW, stabilization. Each file is 1080p H.264.")
     }
+
+    /** File names for the (screen-tall, screen-wide) crops: held sideways, the screen-tall crop is a wide shot. */
+    private fun namesFor(rotation: Int) = if (rotation % 180 == 90) "landscape" to "portrait" else "portrait" to "landscape"
 }
