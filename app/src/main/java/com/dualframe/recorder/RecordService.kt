@@ -36,8 +36,6 @@ class RecordService : Service(), CameraController.Listener {
         private set
     var pendingStart = false // between the start beep and the recording actually starting
         private set
-    var lastSaved: Uri? = null
-        private set
     private var blurBox: BlurBoxOverlay? = null
     private var blurBoxRect: Rect? = null
     private var blurMode = 0
@@ -98,10 +96,11 @@ class RecordService : Service(), CameraController.Listener {
     override fun onNotice(text: String) { ui?.onNotice(text) }
 
     override fun onSaved(uris: List<Uri>, ok: Boolean) {
-        uris.lastOrNull()?.let { lastSaved = it }
         if (!busy) leaveForeground() // only after the files are finalized
         ui?.onSaved(uris, ok)
     }
+
+    override fun onCropsChanged() { ui?.onCropsChanged() }
 
     override fun onRecordingStopped() {
         sound.play(MediaActionSound.STOP_VIDEO_RECORDING)

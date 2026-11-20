@@ -9,7 +9,8 @@
         android:id="@+id/previewBox"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="top">
+        android:layout_gravity="top"
+        android:layout_marginTop="@dimen/top_bar">
 
         <SurfaceView
             android:id="@+id/preview"
@@ -20,6 +21,20 @@
             android:id="@+id/overlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
+
+        <com.dualframe.recorder.VerticalSlider
+            android:id="@+id/landscapeSlider"
+            android:layout_width="40dp"
+            android:layout_height="240dp"
+            android:layout_gravity="start|center_vertical"
+            android:layout_marginStart="8dp" />
+
+        <com.dualframe.recorder.Joystick
+            android:id="@+id/joystick"
+            android:layout_width="112dp"
+            android:layout_height="112dp"
+            android:layout_gravity="end|center_vertical"
+            android:layout_marginEnd="8dp" />
     </FrameLayout>
 
     <TextView
@@ -50,6 +65,7 @@
             android:padding="3dp">
 
             <TextView android:id="@+id/tabCamera" style="@style/Chip" android:text="CAMERA" />
+            <TextView android:id="@+id/tabPan" style="@style/Chip" android:text="PAN" />
             <TextView android:id="@+id/tabScreen" style="@style/Chip" android:text="SCREEN" />
         </LinearLayout>
 
@@ -66,29 +82,29 @@
                 android:contentDescription="Flash"
                 android:src="@drawable/ic_flash_off" />
 
-            <TextView
-                android:id="@+id/fps"
-                style="@style/Chip"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/pill"
-                android:contentDescription="Frame rate"
-                android:text="30 FPS" />
+            <SeekBar
+                android:id="@+id/seekFlash"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:contentDescription="Flash brightness"
+                android:visibility="invisible" />
 
             <Chronometer
                 android:id="@+id/timer"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
+                android:layout_marginHorizontal="8dp"
                 android:textColor="#FFFF4D4D"
                 android:textSize="18sp"
                 android:visibility="invisible" />
 
-            <ImageButton
-                android:id="@+id/info"
-                style="@style/RoundIcon"
-                android:contentDescription="Camera capabilities"
-                android:src="@drawable/ic_info" />
+            <TextView
+                android:id="@+id/fps"
+                style="@style/Chip"
+                android:background="@drawable/pill"
+                android:contentDescription="Frame rate"
+                android:text="30 FPS" />
         </LinearLayout>
 
         <TextView
@@ -143,14 +159,9 @@
             android:background="@drawable/pill"
             android:padding="3dp" />
 
-        <LinearLayout style="@style/SliderRow">
-            <TextView style="@style/SliderLabel" android:text="Portrait ↔" android:textColor="#FF4D8DFF" />
-            <SeekBar android:id="@+id/seekPortrait" style="@style/Slider" android:contentDescription="Move portrait frame left or right" />
-        </LinearLayout>
-
-        <LinearLayout style="@style/SliderRow">
-            <TextView style="@style/SliderLabel" android:text="Landscape ↕" android:textColor="#FFFF8A3D" />
-            <SeekBar android:id="@+id/seekLandscape" style="@style/Slider" android:contentDescription="Move landscape frame up or down" />
+        <LinearLayout android:id="@+id/panRow" style="@style/SliderRow" android:visibility="gone">
+            <TextView style="@style/SliderLabel" android:text="Pan speed" android:textColor="#FFFFFFFF" />
+            <SeekBar android:id="@+id/seekPan" style="@style/Slider" android:contentDescription="Pan speed" />
         </LinearLayout>
 
         <LinearLayout
@@ -165,7 +176,7 @@
         </LinearLayout>
 
         <LinearLayout style="@style/ShutterRow">
-            <ImageButton android:id="@+id/gallery" style="@style/RoundIcon" android:contentDescription="Open gallery" android:src="@drawable/ic_gallery" />
+            <ImageButton android:id="@+id/info" style="@style/RoundIcon" android:contentDescription="Camera capabilities" android:src="@drawable/ic_info" />
             <FrameLayout android:id="@+id/shutter" style="@style/Shutter" android:contentDescription="Record">
                 <View android:id="@+id/shutterInner" style="@style/ShutterInner" />
             </FrameLayout>
@@ -218,11 +229,9 @@
             android:text="Show pointer: turn on “Show taps”" />
 
         <LinearLayout style="@style/ShutterRow">
-            <ImageButton android:id="@+id/gallery2" style="@style/RoundIcon" android:contentDescription="Open gallery" android:src="@drawable/ic_gallery" />
             <FrameLayout android:id="@+id/screenShutter" style="@style/Shutter" android:contentDescription="Record screen">
                 <View android:id="@+id/screenShutterInner" style="@style/ShutterInner" />
             </FrameLayout>
-            <View android:layout_width="48dp" android:layout_height="48dp" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

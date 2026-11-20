@@ -43,8 +43,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     private lateinit var notice: TextView
     private lateinit var infoPanel: ScrollView
     private lateinit var lensRow: LinearLayout
-    private lateinit var seekPortrait: SeekBar
-    private lateinit var seekLandscape: SeekBar
+    private lateinit var joystick: Joystick
+    private lateinit var landscapeSlider: VerticalSlider
+    private lateinit var seekFlash: SeekBar
+    private lateinit var seekPan: SeekBar
     private lateinit var seekBlur: SeekBar
     private lateinit var shutterInner: View
     private lateinit var screenShutterInner: View
@@ -52,7 +54,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     private var service: RecordService? = null
     private val cam get() = service?.camera
     private var surfaceReady = false
-    private var cameraTab = true
+    private var tab = TAB_CAMERA
+    private val cameraTab get() = tab != TAB_SCREEN
+    private var flashLevelNoticeShown = false
     private var blurMode = 0
     private var pendingScreen: Pair<Int, Intent>? = null
 
@@ -61,7 +65,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
             val s = (binder as RecordService.LocalBinder).service
             service = s
             s.ui = this@MainActivity
-            if (s.screen != null) cameraTab = false
+            if (s.screen != null) tab = TAB_SCREEN else if (s.camera.panning) tab = TAB_PAN
+            if (tab == TAB_PAN) s.camera.setPan(true, panSpeed()) // a fresh service starts with panning off
             startPendingScreen()
             if (cameraTab && hasPerms()) openCamera()
             refresh()
@@ -82,16 +87,27 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         notice = findViewById(R.id.notice)
         infoPanel = findViewById(R.id.infoPanel)
         lensRow = findViewById(R.id.lenses)
-        seekPortrait = findViewById(R.id.seekPortrait)
-        seekLandscape = findViewById(R.id.seekLandscape)
+        joystick = findViewById(R.id.joystick)
+        landscapeSlider = findViewById(R.id.landscapeSlider)
+        seekFlash = findViewById(R.id.seekFlash)
+        seekPan = findViewById(R.id.seekPan)
         seekBlur = findViewById(R.id.seekBlur)
         shutterInner = findViewById(R.id.shutterInner)
         screenShutterInner = findViewById(R.id.screenShutterInner)
         preview.holder.addCallback(this)
 
-        findViewById<View>(R.id.tabCamera).setOnClickListener { switchTab(true) }
-        findViewById<View>(R.id.tabScreen).setOnClickListener { switchTab(false) }
-        flash.setOnClickListener { cam?.let { it.setTorch(!it.torch); refresh() } }
+        findViewById<View>(R.id.tabCamera).setOnClickListener { switchTab(TAB_CAMERA) }
+        findViewById<View>(R.id.tabPan).setOnClickListener { switchTab(TAB_PAN) }
+        findViewById<View>(R.id.tabScreen).setOnClickListener { switchTab(TAB_SCREEN) }
+        flash.setOnClickListener {
+            val c = cam ?: return@setOnClickListener
+            c.setTorch(!c.torch)
+            if (c.torch && c.maxTorchLevel <= 1 && !flashLevelNoticeShown) {
+                flashLevelNoticeShown = true
+                onNotice("This phone doesn't let apps change flash brightness.")
+            }
+            refresh()
+        }
         fpsChip.setOnClickListener {
             val c = cam ?: return@setOnClickListener
             if (service!!.busy) return@setOnClickListener
@@ -109,8 +125,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
             val c = cam ?: return@setOnClickListener
             if (!service!!.busy) c.setFront(!c.front)
         }
-        findViewById<View>(R.id.gallery).setOnClickListener { openGallery() }
-        findViewById<View>(R.id.gallery2).setOnClickListener { openGallery() }
         findViewById<View>(R.id.shutter).setOnClickListener { onShutter() }
         findViewById<View>(R.id.screenShutter).setOnClickListener { onScreenShutter() }
         findViewById<View>(R.id.showTaps).setOnClickListener { openShowTaps() }
@@ -121,16 +135,29 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         val slider = object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
                 if (!fromUser) return
-                if (bar === seekBlur) return pushBlur()
-                cam?.setPositions(seekPortrait.progress / 100f, seekLandscape.progress / 100f)
-                updateOverlay()
+                when (bar) {
+                    seekBlur -> pushBlur()
+                    seekFlash -> cam?.let { it.setTorchLevel(1 + value * (it.maxTorchLevel - 1) / 100) }
+                    seekPan -> cam?.setPan(true, panSpeed())
+                }
             }
             override fun onStartTrackingTouch(bar: SeekBar) = Unit
             override fun onStopTrackingTouch(bar: SeekBar) = Unit
         }
-        seekPortrait.setOnSeekBarChangeListener(slider)
-        seekLandscape.setOnSeekBarChangeListener(slider)
+        seekFlash.max = 100
+        seekFlash.setOnSeekBarChangeListener(slider)
+        seekPan.setOnSeekBarChangeListener(slider)
         seekBlur.setOnSeekBarChangeListener(slider)
+        joystick.onMove = { dx, dy, dt ->
+            cam?.let {
+                val step = 0.8f * dt // full sweep in about 1.25 s at full tilt
+                it.setPositions(it.portraitX + dx * step, it.portraitY + dy * step, it.landscapeY)
+                updateOverlay()
+            }
+        }
+        landscapeSlider.onChange = { v ->
+            cam?.let { it.setPositions(it.portraitX, it.portraitY, v); updateOverlay() }
+        }
         seekBlur.progress = 40
 
         if (!hasPerms()) requestPermissions(perms, 1)
@@ -180,14 +207,17 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         if (c.isOpen) onReady(c.upright.first, c.upright.second, c.lenses, c.hasFlash)
     }
 
-    private fun switchTab(camera: Boolean) {
+    private fun switchTab(to: Int) {
         val s = service ?: return
-        if (s.busy || camera == cameraTab) return
-        cameraTab = camera
+        if (s.busy || to == tab) return
+        tab = to
         infoPanel.visibility = View.GONE
-        if (camera) { if (hasPerms()) openCamera() } else s.camera.close()
+        s.camera.setPan(to == TAB_PAN, panSpeed())
+        if (cameraTab) { if (hasPerms()) openCamera() } else s.camera.close()
         refresh()
     }
+
+    private fun panSpeed() = 0.05f + seekPan.progress * 0.0045f // one sweep in 20 s .. 2 s
 
     private fun setPhotoMode(photo: Boolean) {
         val c = cam ?: return
@@ -240,7 +270,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         val (code, data) = pendingScreen ?: return
         pendingScreen = null
         s.setBlur(blurMode, blurRadius())
-        s.startScreen(code, data, s.camera.fps, geometry())
+        s.startScreen(code, data, 60, geometry())
         moveTaskToBack(true) // get out of the way so the user records other apps
     }
 
@@ -255,13 +285,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     private fun pushBlur() { service?.setBlur(blurMode, blurRadius()) }
 
-    private fun openGallery() {
-        val uri = service?.lastSaved
-        val intent = if (uri != null) Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        else Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY)
-        runCatching { startActivity(intent) }.onFailure { toast("No gallery app found.") }
-    }
-
     private fun openShowTaps() {
         runCatching {
             startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
@@ -275,8 +298,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     private fun updateOverlay() {
         val c = cam ?: return
-        val (p, l) = crops(c.upright.first, c.upright.second, c.portraitPos, c.landscapePos)
+        val (p, l) = c.currentCrops()
         overlay.setCrops(p, l)
+        landscapeSlider.value = c.landscapeY
     }
 
     /** Syncs every control with the service's state. */
@@ -284,8 +308,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         val s = service ?: return
         val c = s.camera
         val selected = { v: Int, on: Boolean -> findViewById<View>(v).setBackgroundResource(if (on) R.drawable.pill_selected else 0) }
-        selected(R.id.tabCamera, cameraTab)
-        selected(R.id.tabScreen, !cameraTab)
+        selected(R.id.tabCamera, tab == TAB_CAMERA)
+        selected(R.id.tabPan, tab == TAB_PAN)
+        selected(R.id.tabScreen, tab == TAB_SCREEN)
+        joystick.visibility = if (tab == TAB_CAMERA) View.VISIBLE else View.GONE
+        landscapeSlider.visibility = joystick.visibility
+        findViewById<View>(R.id.panRow).visibility = if (tab == TAB_PAN) View.VISIBLE else View.GONE
+        fpsChip.visibility = if (cameraTab) View.VISIBLE else View.INVISIBLE
+        seekFlash.visibility = if (cameraTab && c.torch && c.maxTorchLevel > 1) View.VISIBLE else View.INVISIBLE
+        seekFlash.progress = if (c.maxTorchLevel > 1) (c.torchLevel - 1) * 100 / (c.maxTorchLevel - 1) else 0
         previewBox.visibility = if (cameraTab) View.VISIBLE else View.INVISIBLE
         findViewById<View>(R.id.screenHint).visibility = if (cameraTab) View.GONE else View.VISIBLE
         findViewById<View>(R.id.cameraControls).visibility = if (cameraTab) View.VISIBLE else View.GONE
@@ -296,8 +327,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         selected(R.id.modePhoto, c.photoMode)
         selected(R.id.modeVideo, !c.photoMode)
         listOf(R.id.blurOff, R.id.blurBox, R.id.blurWhole, R.id.blurOutside).forEachIndexed { i, id -> selected(id, i == blurMode) }
-        seekPortrait.progress = (c.portraitPos * 100).toInt()
-        seekLandscape.progress = (c.landscapePos * 100).toInt()
         for (i in 0 until lensRow.childCount) {
             val chip = lensRow.getChildAt(i)
             chip.setBackgroundResource(if (chip.tag == c.zoom) R.drawable.pill_selected else 0)
@@ -360,8 +389,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     override fun onRecordingStopped() = refresh()
 
+    override fun onCropsChanged() = updateOverlay()
+
     companion object {
         private const val REQ_SCREEN = 2
+        private const val TAB_CAMERA = 0
+        private const val TAB_PAN = 1
+        private const val TAB_SCREEN = 2
         private const val SHUTTER_RECORD = 0
         private const val SHUTTER_STOP = 1
         private const val SHUTTER_PHOTO = 2

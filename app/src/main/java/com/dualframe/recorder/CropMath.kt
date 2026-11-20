@@ -11,15 +11,24 @@ val FULL = Crop(0f, 0f, 1f, 1f)
 
 /**
  * (portrait 9:16, landscape 16:9) at the same scale: both fit a square whose side is the frame's short edge.
- * [portraitPos] slides portrait left (0) to right (1); [landscapePos] slides landscape top (0) to bottom (1).
+ * Positions run 0..1: [portraitX] left to right, [portraitY] and [landscapeY] top to bottom.
  */
-fun crops(uprightW: Int, uprightH: Int, portraitPos: Float = 0.5f, landscapePos: Float = 0.5f): Pair<Crop, Crop> {
+fun crops(
+    uprightW: Int, uprightH: Int,
+    portraitX: Float = 0.5f, portraitY: Float = 0.5f, landscapeY: Float = 0.5f,
+): Pair<Crop, Crop> {
     val s = min(uprightW, uprightH).toFloat()
     val short = s * 9f / 16f
     val pw = short / uprightW; val ph = s / uprightH
     val lw = s / uprightW; val lh = short / uprightH
-    return Crop((1f - pw) * portraitPos, (1f - ph) / 2f, pw, ph) to
-        Crop((1f - lw) / 2f, (1f - lh) * (1f - landscapePos), lw, lh)
+    return Crop((1f - pw) * portraitX, (1f - ph) * (1f - portraitY), pw, ph) to
+        Crop((1f - lw) / 2f, (1f - lh) * (1f - landscapeY), lw, lh)
+}
+
+/** Triangle wave for panning: 0 -> 1 -> 0 as [phase] goes 0 -> 1 -> 2, repeating. */
+fun pingPong(phase: Float): Float {
+    val t = phase % 2f
+    return if (t <= 1f) t else 2f - t
 }
 
 /**

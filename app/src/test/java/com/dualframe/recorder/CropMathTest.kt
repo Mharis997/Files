@@ -25,14 +25,24 @@ class CropMathTest {
         assertEquals(p.w * 3000 / 1080, l.w * 3000 / 1920, 1e-4f)
     }
 
-    @Test fun crops_slidersMovePortraitSidewaysAndLandscapeUpDown() {
-        val (pLeft, lTop) = crops(3000, 4000, portraitPos = 0f, landscapePos = 0f)
-        assertEquals(0f, pLeft.x, 1e-5f)
-        assertEquals(1f - 0.421875f, lTop.y, 1e-5f) // GL y is bottom-up: top edge at 1
-        val (pRight, lBottom) = crops(3000, 4000, portraitPos = 1f, landscapePos = 1f)
-        assertEquals(1f - 0.5625f, pRight.x, 1e-5f)
+    @Test fun crops_positionsMoveFramesToTheEdges() {
+        val (pTopLeft, lTop) = crops(3000, 4000, portraitX = 0f, portraitY = 0f, landscapeY = 0f)
+        assertEquals(0f, pTopLeft.x, 1e-5f)
+        assertEquals(1f - 0.75f, pTopLeft.y, 1e-5f) // GL y is bottom-up: top edge at 1
+        assertEquals(1f - 0.421875f, lTop.y, 1e-5f)
+        val (pBottomRight, lBottom) = crops(3000, 4000, portraitX = 1f, portraitY = 1f, landscapeY = 1f)
+        assertEquals(1f - 0.5625f, pBottomRight.x, 1e-5f)
+        assertEquals(0f, pBottomRight.y, 1e-5f)
         assertEquals(0f, lBottom.y, 1e-5f)
-        assertEquals(0.125f, pRight.y, 1e-5f) // portrait stays vertically centered
+        assertEquals(0f, lBottom.x, 1e-5f) // landscape always spans the full width
+    }
+
+    @Test fun pingPong_sweepsThereAndBack() {
+        assertEquals(0f, pingPong(0f), 1e-5f)
+        assertEquals(0.5f, pingPong(0.5f), 1e-5f)
+        assertEquals(1f, pingPong(1f), 1e-5f)
+        assertEquals(0.25f, pingPong(1.75f), 1e-5f)
+        assertEquals(0.5f, pingPong(4.5f), 1e-5f) // wraps every 2
     }
 
     @Test fun chooseSourceSize_picksSmallestAtLeast1920() =

@@ -40,6 +40,7 @@ class CameraController(private val context: Context) {
         fun onNotice(text: String)
         fun onSaved(uris: List<Uri>, ok: Boolean)
         fun onRecordingStopped()
+        fun onCropsChanged() // frame positions moved by panning
     }
 
     var listener: Listener? = null
@@ -50,8 +51,12 @@ class CameraController(private val context: Context) {
     var photoMode = false; private set
     var zoom = 1f; private set
     var torch = false; private set
-    var portraitPos = 0.5f; private set
-    var landscapePos = 0.5f; private set
+    var torchLevel = 1; private set
+    var portraitX = 0.5f; private set
+    var portraitY = 0.5f; private set
+    var landscapeY = 0.5f; private set
+    var panning = false; private set
+    var panSpeed = 0.2f; private set // sweeps per second
 
     private val manager = context.getSystemService(CameraManager::class.java)
     private val main = Handler(Looper.getMainLooper())
@@ -68,6 +73,22 @@ class CameraController(private val context: Context) {
     var upright = 3000 to 4000; private set
     var lenses = listOf(1f); private set
     var hasFlash = false; private set
+    /** Highest torch brightness step this camera accepts; 1 means brightness can't be changed. */
+    var maxTorchLevel = 1; private set
+    private var panPhase = 0f
+    private var lastPanTick = 0L
+    private val panTick = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            panPhase += panSpeed * (now - lastPanTick) / 1000f
+            lastPanTick = now
+            portraitX = pingPong(panPhase)
+            landscapeY = portraitX
+            applyCrops()
+            listener?.onCropsChanged()
+            main.postDelayed(this, 33)
+        }
+    }
     private var bootClock = false
     private var recorder: Recorder? = null
     val recording get() = recorder != null
@@ -144,6 +165,9 @@ class CameraController(private val context: Context) {
                                 session = s
                                 updateRequest()
                                 hasFlash = c.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                                maxTorchLevel = if (Build.VERSION.SDK_INT >= 35)
+                                    c.get(CameraCharacteristics.FLASH_TORCH_STRENGTH_MAX_LEVEL) ?: 1 else 1
+                                torchLevel = torchLevel.coerceIn(1, maxTorchLevel)
                                 listener?.onReady(upright.first, upright.second, lenses, hasFlash)
                             }
                             override fun onConfigureFailed(s: CameraCaptureSession) = notice("Camera setup failed at this setting.")
@@ -174,6 +198,7 @@ class CameraController(private val context: Context) {
     }
 
     fun release() {
+        main.removeCallbacks(panTick)
         close()
         photoThread.quitSafely()
     }
@@ -185,13 +210,31 @@ class CameraController(private val context: Context) {
     fun setPhotoMode(value: Boolean) { photoMode = value; restart() }
     fun setZoom(value: Float) { zoom = value; updateRequest() }
     fun setTorch(value: Boolean) { torch = value; updateRequest() }
-    fun setPositions(portrait: Float, landscape: Float) {
-        portraitPos = portrait; landscapePos = landscape
+    fun setTorchLevel(value: Int) { torchLevel = value.coerceIn(1, maxTorchLevel); updateRequest() }
+
+    /** Panning sweeps portrait left-right and landscape top-bottom on its own; runs in the background too. */
+    fun setPan(on: Boolean, sweepsPerSecond: Float) {
+        panSpeed = sweepsPerSecond
+        if (on == panning) return
+        panning = on
+        main.removeCallbacks(panTick)
+        if (on) {
+            panPhase = portraitX // continue from where the portrait frame is now
+            lastPanTick = SystemClock.uptimeMillis()
+            main.post(panTick)
+        }
+    }
+    fun setPositions(portraitX: Float, portraitY: Float, landscapeY: Float) {
+        this.portraitX = portraitX.coerceIn(0f, 1f)
+        this.portraitY = portraitY.coerceIn(0f, 1f)
+        this.landscapeY = landscapeY.coerceIn(0f, 1f)
         applyCrops()
     }
 
+    fun currentCrops() = crops(upright.first, upright.second, portraitX, portraitY, landscapeY)
+
     private fun applyCrops() {
-        val (p, l) = crops(upright.first, upright.second, portraitPos, landscapePos)
+        val (p, l) = currentCrops()
         // the preview is mirrored for the front camera; files are not
         renderer?.setCrops(FULL, listOf(p, l), mirrorOutputs = front)
     }
@@ -203,6 +246,7 @@ class CameraController(private val context: Context) {
     private fun CaptureRequest.Builder.common() {
         if (Build.VERSION.SDK_INT >= 30) set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom)
         set(CaptureRequest.FLASH_MODE, if (torch) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF)
+        if (torch && maxTorchLevel > 1 && Build.VERSION.SDK_INT >= 35) set(CaptureRequest.FLASH_STRENGTH_LEVEL, torchLevel)
     }
 
     private fun updateRequest() {
@@ -266,7 +310,7 @@ class CameraController(private val context: Context) {
         val w = image.width
         val h = image.height
         val bytes = image.use { val b = it.planes[0].buffer; ByteArray(b.remaining()).also { a -> b.get(a) } }
-        val (p, l) = crops(upright.first, upright.second, portraitPos, landscapePos)
+        val (p, l) = currentCrops()
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val uris = ArrayList<Uri>()
         @Suppress("DEPRECATION") val decoder = BitmapRegionDecoder.newInstance(bytes, 0, bytes.size, false)!!
@@ -303,7 +347,7 @@ class CameraController(private val context: Context) {
     fun describe(): String = buildString {
         if (chars != null) {
             val (uw, uh) = upright
-            val (p, l) = crops(uw, uh, portraitPos, landscapePos)
+            val (p, l) = currentCrops()
             val rec = recordedFraction(p, l)
             appendLine("NOW (${if (front) "front" else "back"} camera, ${"%.1f".format(zoom)}×, $fps fps)")
             appendLine("Camera stream: ${stream.first}×${stream.second} → upright ${uw}×${uh}")
