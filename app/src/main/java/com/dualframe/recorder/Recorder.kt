@@ -3,16 +3,13 @@ package com.dualframe.recorder
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
-import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.media.MediaRecorder
-import android.media.projection.MediaProjection
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
@@ -31,8 +28,7 @@ import java.util.Locale
 data class VideoSpec(val name: String, val width: Int, val height: Int)
 
 /**
- * One H.264 encoder per [VideoSpec] and one AAC encoder whose samples go into every file.
- * Audio is the mic, mixed with phone playback when [projection] is given (screen recording).
+ * One H.264 encoder per [VideoSpec] and one AAC encoder (mic) whose samples go into every file.
  * [useBootTimeClock] must match the video timestamps' clock for A/V sync.
  */
 class Recorder(
@@ -40,7 +36,6 @@ class Recorder(
     private val specs: List<VideoSpec>,
     private val fps: Int,
     private val useBootTimeClock: Boolean,
-    private val projection: MediaProjection?,
     private val onDone: (saved: List<Uri>, ok: Boolean) -> Unit, // main thread, also after an encoder failure
 ) {
     private class Sample(val data: ByteBuffer, val info: MediaCodec.BufferInfo)
@@ -70,7 +65,6 @@ class Recorder(
     private lateinit var audioEnc: MediaCodec
     private val audioIn = ArrayList<AudioRecord>()
     private var pcm = ShortArray(0)
-    private var mixBuf = ShortArray(0)
     private var audioFormat: MediaFormat? = null
     private var audioDone = false
     private var finished = false
@@ -102,17 +96,8 @@ class Recorder(
         val fmt = AudioFormat.Builder().setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_IN_MONO)
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()
         val bufBytes = maxOf(AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT) * 4, 65_536) // 4x the 16 KB read size
-        audioIn += AudioRecord.Builder()
-            .setAudioSource(if (projection == null) MediaRecorder.AudioSource.CAMCORDER else MediaRecorder.AudioSource.MIC)
+        audioIn += AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
             .setAudioFormat(fmt).setBufferSizeInBytes(bufBytes).build()
-        if (projection != null) {
-            audioIn += AudioRecord.Builder().setAudioFormat(fmt).setBufferSizeInBytes(bufBytes)
-                .setAudioPlaybackCaptureConfig(AudioPlaybackCaptureConfiguration.Builder(projection)
-                    .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-                    .addMatchingUsage(AudioAttributes.USAGE_GAME)
-                    .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build())
-                .build()
-        }
         audioEnc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {
             setCallback(audioCallback, Handler(audioThread.looper))
             configure(MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, rate, 1).apply {
@@ -175,12 +160,8 @@ class Recorder(
             }
             val buf = codec.getInputBuffer(index)!!.order(ByteOrder.nativeOrder())
             val want = buf.capacity() / 2
-            if (pcm.size < want) { pcm = ShortArray(want); mixBuf = ShortArray(want) }
+            if (pcm.size < want) pcm = ShortArray(want)
             val n = audioIn[0].read(pcm, 0, want).coerceAtLeast(0) // blocking: the mic paces the audio
-            for (extra in audioIn.drop(1)) { // phone playback: mix whatever is ready, never wait for it
-                val m = extra.read(mixBuf, 0, n, AudioRecord.READ_NON_BLOCKING)
-                for (i in 0 until m.coerceAtLeast(0)) pcm[i] = (pcm[i] + mixBuf[i]).coerceIn(-32768, 32767).toShort()
-            }
             buf.asShortBuffer().put(pcm, 0, n)
             // timestamp of the first sample in this chunk, on the video's clock
             val pts = (nowNs() / 1000 - n * 1_000_000L / 48_000).coerceAtLeast(lastAudioPtsUs + 1)

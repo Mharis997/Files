@@ -37,12 +37,6 @@ class CropMathTest {
         assertEquals(0f, lBottom.x, 1e-5f) // landscape always spans the full width
     }
 
-    @Test fun fullFrameSize_capsLongSideAt1920KeepingAspect() {
-        assertEquals(1440 to 1920, fullFrameSize(3000, 4000))
-        assertEquals(1440 to 1920, fullFrameSize(1920, 2560))
-        assertEquals(1080 to 1440, fullFrameSize(1080, 1440)) // never upscales
-    }
-
     @Test fun chooseSourceSize_picksSmallestAtLeast1920() =
         assertEquals((2560 to 1920) to false,
             chooseSourceSize(listOf(4000 to 3000, 2560 to 1920, 1440 to 1080, 1920 to 1080), 30) { 33_333_333L })
@@ -88,17 +82,5 @@ class CropMathTest {
         val (p, l) = crops(3000, 4000)
         // (1687.5*3000 + 3000*1687.5 - 1687.5^2) / 12M
         assertEquals(0.6064453f, recordedFraction(p, l), 1e-5f)
-    }
-
-    @Test fun screenCrop_dropsBarsAndRoundsTo16() {
-        val (c, h) = screenCrop(2340, 84, 63)
-        assertEquals(2192, h)
-        assertCrop(Crop(0f, 63f / 2340, 1f, 2192f / 2340), c)
-    }
-
-    @Test fun screenBox_mapsScreenPixelsIntoOutput() {
-        // output covers screen rows 84..2276 (2192 tall); box from (108,184) to (540,1280)
-        assertCrop(Crop(0.1f, 1f - (1280f - 84) / 2192, 0.4f, (1280f - 184) / 2192),
-            screenBox(108, 184, 540, 1280, 1080, 84, 2192))
     }
 }

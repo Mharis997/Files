@@ -22,13 +22,6 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <com.dualframe.recorder.PanGuideView
-            android:id="@+id/panGuide"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:importantForAccessibility="no"
-            android:visibility="gone" />
-
         <com.dualframe.recorder.VerticalSlider
             android:id="@+id/landscapeSlider"
             android:layout_width="40dp"
@@ -44,19 +37,7 @@
             android:layout_marginEnd="8dp" />
     </FrameLayout>
 
-    <TextView
-        android:id="@+id/screenHint"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center"
-        android:padding="32dp"
-        android:text="Records the whole screen in portrait, without the status bar and navigation bar.\n\nAfter you start, DualFrame goes to the background. Stop from the notification."
-        android:textColor="#B3FFFFFF"
-        android:textSize="15sp"
-        android:visibility="gone" />
-
-    <!-- Top: tabs, then quick settings -->
+    <!-- Top: quick settings -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -66,20 +47,8 @@
         android:paddingTop="16dp">
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="@drawable/pill"
-            android:padding="3dp">
-
-            <TextView android:id="@+id/tabCamera" style="@style/Chip" android:text="CAMERA" />
-            <TextView android:id="@+id/tabPan" style="@style/Chip" android:text="PAN" />
-            <TextView android:id="@+id/tabScreen" style="@style/Chip" android:text="SCREEN" />
-        </LinearLayout>
-
-        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
             android:gravity="center_vertical"
             android:paddingHorizontal="16dp">
 
@@ -133,7 +102,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginHorizontal="12dp"
-        android:layout_marginTop="120dp"
+        android:layout_marginTop="@dimen/top_bar"
         android:layout_marginBottom="200dp"
         android:background="#D9101418"
         android:padding="16dp"
@@ -166,12 +135,6 @@
             android:background="@drawable/pill"
             android:padding="3dp" />
 
-        <LinearLayout android:id="@+id/panRow" style="@style/SliderRow" android:visibility="gone">
-            <TextView style="@style/SliderLabel" android:text="Target speed" android:textColor="#FFFFFFFF" />
-            <SeekBar android:id="@+id/seekPan" style="@style/Slider" android:contentDescription="Target pan speed" />
-            <TextView android:id="@+id/panValue" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textColor="#FFFFFFFF" android:textSize="13sp" android:fontFeatureSettings="tnum" android:text="120°/s" />
-        </LinearLayout>
-
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -189,57 +152,6 @@
                 <View android:id="@+id/shutterInner" style="@style/ShutterInner" />
             </FrameLayout>
             <ImageButton android:id="@+id/flip" style="@style/RoundIcon" android:contentDescription="Switch front or back camera" android:src="@drawable/ic_flip" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Bottom: screen recording controls -->
-    <LinearLayout
-        android:id="@+id/screenControls"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        android:paddingBottom="28dp"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="BLUR"
-            android:textColor="#99FFFFFF"
-            android:letterSpacing="0.1"
-            android:textSize="12sp" />
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:background="@drawable/pill"
-            android:padding="3dp">
-
-            <TextView android:id="@+id/blurOff" style="@style/Chip" android:text="OFF" />
-            <TextView android:id="@+id/blurBox" style="@style/Chip" android:text="BOX" />
-            <TextView android:id="@+id/blurWhole" style="@style/Chip" android:text="WHOLE" />
-            <TextView android:id="@+id/blurOutside" style="@style/Chip" android:text="OUTSIDE BOX" />
-        </LinearLayout>
-
-        <LinearLayout style="@style/SliderRow">
-            <TextView style="@style/SliderLabel" android:text="Strength" android:textColor="#FFFFFFFF" />
-            <SeekBar android:id="@+id/seekBlur" style="@style/Slider" android:contentDescription="Blur strength" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/showTaps"
-            style="@style/Chip"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/pill"
-            android:text="Show pointer: turn on “Show taps”" />
-
-        <LinearLayout style="@style/ShutterRow">
-            <FrameLayout android:id="@+id/screenShutter" style="@style/Shutter" android:contentDescription="Record screen">
-                <View android:id="@+id/screenShutterInner" style="@style/ShutterInner" />
-            </FrameLayout>
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

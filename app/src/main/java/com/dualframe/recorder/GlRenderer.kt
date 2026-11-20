@@ -32,7 +32,7 @@ class GlRenderer {
     private var preview: EGLSurface? = null
     private var program = 0
     private var texId = 0
-    private var uTex = 0; private var uMode = 0; private var uBox = 0; private var uDx = 0; private var uDy = 0
+    private var uTex = 0
     private var aPos = 0; private var aTex = 0
     lateinit var surfaceTexture: SurfaceTexture
         private set
@@ -42,11 +42,6 @@ class GlRenderer {
     private var previewM = texMatrix(FULL)
     private var outputMs: List<FloatArray> = emptyList()
     private var targets: List<Target> = emptyList()
-    private var blurMode = 0f
-    private var blurBox = Crop(0f, 0f, 0f, 0f)
-    private var blurRadiusPx = 0f
-    private var minEncodeIntervalNs = 0L
-    private var lastEncodedNs = 0L
     private var released = false
 
     private val quad = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
@@ -85,10 +80,6 @@ class GlRenderer {
 
         program = buildProgram()
         uTex = GLES20.glGetUniformLocation(program, "uTex")
-        uMode = GLES20.glGetUniformLocation(program, "uMode")
-        uBox = GLES20.glGetUniformLocation(program, "uBox")
-        uDx = GLES20.glGetUniformLocation(program, "uDx")
-        uDy = GLES20.glGetUniformLocation(program, "uDy")
         aPos = GLES20.glGetAttribLocation(program, "aPos")
         aTex = GLES20.glGetAttribLocation(program, "aTex")
         val t = IntArray(1)
@@ -116,15 +107,8 @@ class GlRenderer {
         outputMs = outputs.map { texMatrix(it, mirrorOutputs) }
     }
 
-    /** [mode]: 0 off, 1 inside [box], 2 whole frame, 3 outside [box]. [box] is in output UV, GL convention. */
-    fun setBlur(mode: Int, box: Crop, radiusPx: Float) = handler.post {
-        blurMode = mode.toFloat(); blurBox = box; blurRadiusPx = radiusPx
-    }
-
     /** Encoder surfaces as (surface, width, height), in the same order as the output crops. */
-    fun startEncoding(surfaces: List<Triple<Surface, Int, Int>>, fps: Int) = handler.post {
-        minEncodeIntervalNs = 1_000_000_000L / fps * 9 / 10 // screen capture can deliver 120 fps; keep the chosen rate
-        lastEncodedNs = 0L
+    fun startEncoding(surfaces: List<Triple<Surface, Int, Int>>) = handler.post {
         targets = surfaces.map { (s, w, h) -> Target(windowSurface(s), w, h) }
     }
 
@@ -159,26 +143,18 @@ class GlRenderer {
             val size = IntArray(2)
             EGL14.eglQuerySurface(display, it, EGL14.EGL_WIDTH, size, 0)
             EGL14.eglQuerySurface(display, it, EGL14.EGL_HEIGHT, size, 1)
-            draw(it, previewM, size[0], size[1], null, blur = false)
+            draw(it, previewM, size[0], size[1], null)
         }
         val ts = surfaceTexture.timestamp
-        if (targets.isEmpty() || ts - lastEncodedNs < minEncodeIntervalNs) return
-        lastEncodedNs = ts
-        targets.forEachIndexed { i, t -> draw(t.surface, outputMs.getOrElse(i) { previewM }, t.w, t.h, ts, blur = true) }
+        targets.forEachIndexed { i, t -> draw(t.surface, outputMs.getOrElse(i) { previewM }, t.w, t.h, ts) }
     }
 
-    private fun draw(target: EGLSurface, cropM: FloatArray, w: Int, h: Int, ptsNs: Long?, blur: Boolean) {
+    private fun draw(target: EGLSurface, cropM: FloatArray, w: Int, h: Int, ptsNs: Long?) {
         EGL14.eglMakeCurrent(display, target, target, context)
         GLES20.glViewport(0, 0, w, h)
         GLES20.glUseProgram(program)
         Matrix.multiplyMM(m, 0, stM, 0, cropM, 0)
         GLES20.glUniformMatrix4fv(uTex, 1, false, m, 0)
-        GLES20.glUniform1f(uMode, if (blur) blurMode else 0f)
-        GLES20.glUniform4f(uBox, blurBox.x, blurBox.y, blurBox.w, blurBox.h)
-        // one blur tap step in texture space: a quad-UV step through the same matrix
-        val sx = blurRadiusPx / 3f / w; val sy = blurRadiusPx / 3f / h
-        GLES20.glUniform2f(uDx, m[0] * sx, m[1] * sx)
-        GLES20.glUniform2f(uDy, m[4] * sy, m[5] * sy)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, texId)
         quad.position(0)
@@ -202,25 +178,13 @@ class GlRenderer {
         }
         val p = GLES20.glCreateProgram()
         GLES20.glAttachShader(p, shader(GLES20.GL_VERTEX_SHADER, """
-            attribute vec4 aPos; attribute vec4 aTex; uniform mat4 uTex; varying vec2 vTex; varying vec2 vUv;
-            void main() { gl_Position = aPos; vTex = (uTex * aTex).xy; vUv = aTex.xy; }
+            attribute vec4 aPos; attribute vec4 aTex; uniform mat4 uTex; varying vec2 vTex;
+            void main() { gl_Position = aPos; vTex = (uTex * aTex).xy; }
         """.trimIndent()))
         GLES20.glAttachShader(p, shader(GLES20.GL_FRAGMENT_SHADER, """
             #extension GL_OES_EGL_image_external : require
-            precision highp float;
-            varying vec2 vTex; varying vec2 vUv;
-            uniform samplerExternalOES sTex;
-            uniform float uMode; uniform vec4 uBox; uniform vec2 uDx; uniform vec2 uDy;
-            void main() {
-                bool inBox = vUv.x >= uBox.x && vUv.x <= uBox.x + uBox.z && vUv.y >= uBox.y && vUv.y <= uBox.y + uBox.w;
-                bool blur = (uMode > 0.5 && uMode < 1.5 && inBox) || (uMode > 1.5 && uMode < 2.5) || (uMode > 2.5 && !inBox);
-                if (!blur) { gl_FragColor = texture2D(sTex, vTex); return; }
-                vec4 sum = vec4(0.0);
-                for (int i = -3; i <= 3; i++)
-                    for (int j = -3; j <= 3; j++)
-                        sum += texture2D(sTex, vTex + float(i) * uDx + float(j) * uDy);
-                gl_FragColor = sum / 49.0;
-            }
+            precision mediump float; varying vec2 vTex; uniform samplerExternalOES sTex;
+            void main() { gl_FragColor = texture2D(sTex, vTex); }
         """.trimIndent()))
         GLES20.glLinkProgram(p)
         val ok = IntArray(1)

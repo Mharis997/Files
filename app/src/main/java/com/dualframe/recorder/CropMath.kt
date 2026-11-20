@@ -67,22 +67,3 @@ fun recordedFraction(p: Crop, l: Crop): Float {
     val oy = max(0f, min(p.y + p.h, l.y + l.h) - max(p.y, l.y))
     return p.w * p.h + l.w * l.h - ox * oy
 }
-
-/** Crop of a full-screen capture without status bar ([top] px) and navigation bar ([bottom] px); height rounded down to 16. */
-fun screenCrop(screenH: Int, top: Int, bottom: Int): Pair<Crop, Int> {
-    val avail = screenH - top - bottom
-    val h = avail / 16 * 16
-    return Crop(0f, (bottom + (avail - h) / 2).toFloat() / screenH, 1f, h.toFloat() / screenH) to h
-}
-
-/** A box in screen pixels mapped into the output frame of [screenCrop] (output starts at screen row [cropTop]). */
-fun screenBox(left: Int, top: Int, right: Int, bottom: Int, screenW: Int, cropTop: Int, cropH: Int) = Crop(
-    left.toFloat() / screenW, 1f - (bottom - cropTop).toFloat() / cropH,
-    (right - left).toFloat() / screenW, (bottom - top).toFloat() / cropH,
-)
-
-/** Output size for recording the whole upright frame: long side at most 1920, sides multiples of 8, never upscaled. */
-fun fullFrameSize(uprightW: Int, uprightH: Int): Pair<Int, Int> {
-    val scale = minOf(1f, 1920f / maxOf(uprightW, uprightH))
-    return ((uprightW * scale).roundToInt() / 8 * 8) to ((uprightH * scale).roundToInt() / 8 * 8)
-}
