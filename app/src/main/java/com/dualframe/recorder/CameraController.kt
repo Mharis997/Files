@@ -86,7 +86,8 @@ class CameraController(private val context: Context) {
 
     fun open() {
         if (renderer != null) return
-        Prefs(context).let { uhd = it.uhd; fps = if (uhd && it.fps == 60) 30 else it.fps } // 4K tops out at 30 fps: two 4K60 encodes overload most phones
+        // 4K tops out at 30 fps (two 4K60 encodes overload most phones); photos preview at 30
+        Prefs(context).let { uhd = it.uhd; fps = if (photoMode || (uhd && it.fps == 60)) 30 else it.fps }
         focus = null
         val facing = if (front) CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK
         val id = manager.cameraIdList.firstOrNull { manager.getCameraCharacteristics(it).get(LENS_FACING) == facing }
@@ -100,13 +101,13 @@ class CameraController(private val context: Context) {
         val map = c.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
         val sizes = map.getOutputSizes(SurfaceTexture::class.java).map { it.width to it.height }
         val minNs = { s: Pair<Int, Int> -> map.getOutputMinFrameDuration(SurfaceTexture::class.java, Size(s.first, s.second)) }
-        var choice = chooseSourceSize(sizes, fps, uhd, minNs)
-        if (choice == null && fps == 60) {
-            notice("60 fps isn't available on this camera; using 30 fps.")
+        var choice = chooseSourceSize(sizes, fps, uhd, photoMode, minNs)
+        if (choice == null && fps != 30) {
+            notice("$fps fps isn't available on this camera; using 30 fps.")
             fps = 30
-            choice = chooseSourceSize(sizes, fps, uhd, minNs)
+            choice = chooseSourceSize(sizes, fps, uhd, photoMode, minNs)
         }
-        val (size, lowDetail) = choice ?: return notice("This camera has no 4:3 video stream.")
+        val (size, lowDetail) = choice ?: return notice("This camera has no usable video stream.")
         if (lowDetail) notice("Lower detail at $fps fps: camera stream is ${size.first}×${size.second}.")
         stream = size
         orientation = c.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
@@ -199,7 +200,13 @@ class CameraController(private val context: Context) {
     fun focusAt(u: Float, v: Float) {
         val c = chars ?: return
         val a = c.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
-        focus = meterRect(currentCrops().first, u, v, front, zoom, orientation, a.width(), a.height())
+        // the stream is the centered part of the sensor with the stream's shape (e.g. 16:9 at 60 fps)
+        val (sw, sh) = stream
+        val (rw, rh) = if (sw.toLong() * a.height() > sh.toLong() * a.width()) a.width() to a.width() * sh / sw
+            else a.height() * sw / sh to a.height()
+        val r = meterRect(currentCrops().first, u, v, front, zoom, orientation, rw, rh)
+        val dx = (a.width() - rw) / 2; val dy = (a.height() - rh) / 2
+        focus = intArrayOf(r[0] + dx, r[1] + dy, r[2] + dx, r[3] + dy)
         updateRequest()
     }
 

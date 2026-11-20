@@ -10,8 +10,8 @@ android {
         applicationId = "com.dualframe.recorder"
         minSdk = 30
         targetSdk = 35
-        versionCode = 10
-        versionName = "2.1"
+        versionCode = 11
+        versionName = "2.2"
     }
     // Fixed debug key in the repo, so every build installs over the previous one. Not for Play Store releases.
     signingConfigs {

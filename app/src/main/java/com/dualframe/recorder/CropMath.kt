@@ -26,17 +26,24 @@ fun crops(
 }
 
 /**
- * Picks the camera stream size from sensor-orientation sizes for [fps].
- * Returns (size, lowDetail). Normally the smallest 4:3 size with short edge >= 1920 (no upscaling to 1080p),
- * otherwise the largest 4:3 size. [largest] always takes the largest (for 4K output). lowDetail: short edge < 1920.
+ * Picks the camera stream size (sensor orientation) for [fps]. Returns (size, lowDetail); lowDetail = short edge < 1920,
+ * so 1080p output is upscaled. Any shape works: the crops only need the short edge.
+ * Normally: among sizes with short edge >= 1920, the squarest (4:3 keeps the whole sensor in view), then the smallest.
+ * Otherwise, or with [largest] (4K): the biggest short edge, then the squarest.
+ * Phones often run 60 fps only on 16:9 streams, which is why shape isn't fixed. [fourThreeOnly] is for photos (4:3 JPEGs).
  */
 fun chooseSourceSize(
-    sizes: List<Pair<Int, Int>>, fps: Int, largest: Boolean = false, minFrameNs: (Pair<Int, Int>) -> Long,
+    sizes: List<Pair<Int, Int>>, fps: Int, largest: Boolean = false, fourThreeOnly: Boolean = false,
+    minFrameNs: (Pair<Int, Int>) -> Long,
 ): Pair<Pair<Int, Int>, Boolean>? {
-    val ok = sizes.filter { (w, h) -> w * 3 == h * 4 && minFrameNs(w to h) <= 1_000_000_000L / fps + 1 }
-    val biggest = ok.maxByOrNull { it.first * it.second }
-    val pick = if (largest) biggest else ok.filter { min(it.first, it.second) >= 1920 }.minByOrNull { it.first * it.second } ?: biggest
-    return pick?.let { it to (min(it.first, it.second) < 1920) }
+    val short = { s: Pair<Int, Int> -> min(s.first, s.second) }
+    val squareness = { s: Pair<Int, Int> -> short(s).toFloat() / max(s.first, s.second) }
+    val ok = sizes.filter { (w, h) -> (!fourThreeOnly || w * 3 == h * 4) && minFrameNs(w to h) <= 1_000_000_000L / fps + 1 }
+    val sharp = ok.filter { short(it) >= 1920 }
+    val pick = if (!largest && sharp.isNotEmpty())
+        sharp.minWithOrNull(compareByDescending(squareness).thenBy { it.first * it.second })
+    else ok.maxWithOrNull(compareBy(short).thenBy(squareness))
+    return pick?.let { it to (short(it) < 1920) }
 }
 
 /**

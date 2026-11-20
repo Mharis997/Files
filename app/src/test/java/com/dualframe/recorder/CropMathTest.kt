@@ -53,7 +53,30 @@ class CropMathTest {
         assertEquals((1440 to 1080) to true,
             chooseSourceSize(listOf(1440 to 1080, 640 to 480, 1920 to 1080), 30) { 33_333_333L })
 
-    @Test fun chooseSourceSize_noneIsNull() = assertNull(chooseSourceSize(listOf(1920 to 1080), 30) { 33_333_333L })
+    @Test fun chooseSourceSize_noneIsNull() = assertNull(chooseSourceSize(listOf(1920 to 1080), 30, fourThreeOnly = true) { 33_333_333L })
+
+    // the S23 case: 60 fps only on 16:9 streams; a 16:9 stream with short edge >= 1920 needs no upscaling
+    @Test fun chooseSourceSize_60fpsUses16by9WhenNo4by3() =
+        assertEquals((3840 to 2160) to false,
+            chooseSourceSize(listOf(4000 to 3000, 2560 to 1920, 3840 to 2160, 1920 to 1080), 60) {
+                if (it.first * 9 == it.second * 16) 16_666_666L else 33_333_333L
+            })
+
+    @Test fun chooseSourceSize_prefers4by3WhenBothQualify() =
+        assertEquals((2560 to 1920) to false,
+            chooseSourceSize(listOf(3840 to 2160, 2560 to 1920), 60) { 16_666_666L })
+
+    @Test fun chooseSourceSize_only1080at60IsLowDetail() =
+        assertEquals((1920 to 1080) to true,
+            chooseSourceSize(listOf(4000 to 3000, 1920 to 1080, 1280 to 720), 60) {
+                if (it.first == 4000) 33_333_333L else 16_666_666L
+            })
+
+    @Test fun crops_work16by9() {
+        val (p, l) = crops(2160, 3840) // upright 16:9 stream
+        assertEquals(1215f / 2160, p.w, 1e-4f); assertEquals(2160f / 3840, p.h, 1e-4f)
+        assertEquals(1f, l.w, 1e-5f); assertEquals(1215f / 3840, l.h, 1e-4f)
+    }
 
     @Test fun texMatrix_mapsQuadIntoCrop() {
         // SurfaceTexture's own matrix already rotates for the sensor, so this is only the crop
