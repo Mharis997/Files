@@ -22,6 +22,13 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
+        <com.dualframe.recorder.PanGuideView
+            android:id="@+id/panGuide"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:visibility="gone" />
+
         <com.dualframe.recorder.VerticalSlider
             android:id="@+id/landscapeSlider"
             android:layout_width="40dp"
@@ -160,8 +167,8 @@
             android:padding="3dp" />
 
         <LinearLayout android:id="@+id/panRow" style="@style/SliderRow" android:visibility="gone">
-            <TextView style="@style/SliderLabel" android:text="Pan speed" android:textColor="#FFFFFFFF" />
-            <SeekBar android:id="@+id/seekPan" style="@style/Slider" android:contentDescription="Pan speed" />
+            <TextView style="@style/SliderLabel" android:text="Target speed" android:textColor="#FFFFFFFF" />
+            <SeekBar android:id="@+id/seekPan" style="@style/Slider" android:contentDescription="Target pan speed" />
         </LinearLayout>
 
         <LinearLayout

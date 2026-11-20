@@ -37,14 +37,6 @@ class CropMathTest {
         assertEquals(0f, lBottom.x, 1e-5f) // landscape always spans the full width
     }
 
-    @Test fun pingPong_sweepsThereAndBack() {
-        assertEquals(0f, pingPong(0f), 1e-5f)
-        assertEquals(0.5f, pingPong(0.5f), 1e-5f)
-        assertEquals(1f, pingPong(1f), 1e-5f)
-        assertEquals(0.25f, pingPong(1.75f), 1e-5f)
-        assertEquals(0.5f, pingPong(4.5f), 1e-5f) // wraps every 2
-    }
-
     @Test fun chooseSourceSize_picksSmallestAtLeast1920() =
         assertEquals((2560 to 1920) to false,
             chooseSourceSize(listOf(4000 to 3000, 2560 to 1920, 1440 to 1080, 1920 to 1080), 30) { 33_333_333L })

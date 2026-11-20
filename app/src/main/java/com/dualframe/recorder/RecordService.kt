@@ -100,8 +100,6 @@ class RecordService : Service(), CameraController.Listener {
         ui?.onSaved(uris, ok)
     }
 
-    override fun onCropsChanged() { ui?.onCropsChanged() }
-
     override fun onRecordingStopped() {
         sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
         ui?.onRecordingStopped()

@@ -25,12 +25,6 @@ fun crops(
         Crop((1f - lw) / 2f, (1f - lh) * (1f - landscapeY), lw, lh)
 }
 
-/** Triangle wave for panning: 0 -> 1 -> 0 as [phase] goes 0 -> 1 -> 2, repeating. */
-fun pingPong(phase: Float): Float {
-    val t = phase % 2f
-    return if (t <= 1f) t else 2f - t
-}
-
 /**
  * Picks the camera stream size from sensor-orientation sizes for [fps].
  * Returns (size, lowDetail): the smallest 4:3 size with short edge >= 1920 (no upscaling to 1080p),

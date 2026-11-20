@@ -7,6 +7,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -29,7 +33,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 
-class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listener {
+class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listener, SensorEventListener {
     private val perms = listOfNotNull(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO,
         if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null).toTypedArray()
     private val main = Handler(Looper.getMainLooper())
@@ -47,6 +51,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     private lateinit var landscapeSlider: VerticalSlider
     private lateinit var seekFlash: SeekBar
     private lateinit var seekPan: SeekBar
+    private lateinit var panGuide: PanGuideView
+    private lateinit var sensors: SensorManager
+    private var lastGyroNs = 0L
     private lateinit var seekBlur: SeekBar
     private lateinit var shutterInner: View
     private lateinit var screenShutterInner: View
@@ -65,9 +72,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
             val s = (binder as RecordService.LocalBinder).service
             service = s
             s.ui = this@MainActivity
-            if (s.screen != null) tab = TAB_SCREEN else if (s.camera.panning) tab = TAB_PAN
-            if (tab == TAB_PAN) s.camera.setPan(true, panSpeed()) // a fresh service starts with panning off
+            if (s.screen != null) tab = TAB_SCREEN
             startPendingScreen()
+            updateSensors()
             if (cameraTab && hasPerms()) openCamera()
             refresh()
         }
@@ -91,6 +98,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         landscapeSlider = findViewById(R.id.landscapeSlider)
         seekFlash = findViewById(R.id.seekFlash)
         seekPan = findViewById(R.id.seekPan)
+        panGuide = findViewById(R.id.panGuide)
+        sensors = getSystemService(SensorManager::class.java)
         seekBlur = findViewById(R.id.seekBlur)
         shutterInner = findViewById(R.id.shutterInner)
         screenShutterInner = findViewById(R.id.screenShutterInner)
@@ -138,7 +147,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
                 when (bar) {
                     seekBlur -> pushBlur()
                     seekFlash -> cam?.let { it.setTorchLevel(1 + value * (it.maxTorchLevel - 1) / 100) }
-                    seekPan -> cam?.setPan(true, panSpeed())
+                    seekPan -> panGuide.targetSpeed = targetSpeed()
                 }
             }
             override fun onStartTrackingTouch(bar: SeekBar) = Unit
@@ -169,6 +178,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     }
 
     override fun onStop() {
+        sensors.unregisterListener(this)
         service?.let {
             it.camera.setPreview(null)
             if (!it.busy) it.camera.close() // keep the camera only while it is recording
@@ -212,12 +222,34 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         if (s.busy || to == tab) return
         tab = to
         infoPanel.visibility = View.GONE
-        s.camera.setPan(to == TAB_PAN, panSpeed())
+        updateSensors()
         if (cameraTab) { if (hasPerms()) openCamera() } else s.camera.close()
         refresh()
     }
 
-    private fun panSpeed() = 0.05f + seekPan.progress * 0.0045f // one sweep in 20 s .. 2 s
+    private fun targetSpeed() = 5f + seekPan.progress * 0.55f // 5..60 deg/s
+
+    /** Gyro and gravity run only while the PAN tab is on screen. */
+    private fun updateSensors() {
+        sensors.unregisterListener(this)
+        if (tab != TAB_PAN || service == null) return
+        val gyro = sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+            ?: return onNotice("This phone has no gyroscope, so the pan guide can't run.")
+        panGuide.meter = PanMeter()
+        panGuide.targetSpeed = targetSpeed()
+        lastGyroNs = 0L
+        sensors.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME)
+        sensors.getDefaultSensor(Sensor.TYPE_GRAVITY)?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+    }
+
+    override fun onSensorChanged(e: SensorEvent) {
+        if (e.sensor.type == Sensor.TYPE_GRAVITY) { panGuide.level = levelDegrees(e.values[0], e.values[1]); return }
+        if (lastGyroNs != 0L) panGuide.meter.update(e.values[0], e.values[1], (e.timestamp - lastGyroNs) / 1e9f)
+        lastGyroNs = e.timestamp
+        panGuide.postInvalidateOnAnimation()
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     private fun setPhotoMode(photo: Boolean) {
         val c = cam ?: return
@@ -314,6 +346,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         joystick.visibility = if (tab == TAB_CAMERA) View.VISIBLE else View.GONE
         landscapeSlider.visibility = joystick.visibility
         findViewById<View>(R.id.panRow).visibility = if (tab == TAB_PAN) View.VISIBLE else View.GONE
+        panGuide.visibility = if (tab == TAB_PAN) View.VISIBLE else View.GONE
         fpsChip.visibility = if (cameraTab) View.VISIBLE else View.INVISIBLE
         seekFlash.visibility = if (cameraTab && c.torch && c.maxTorchLevel > 1) View.VISIBLE else View.INVISIBLE
         seekFlash.progress = if (c.maxTorchLevel > 1) (c.torchLevel - 1) * 100 / (c.maxTorchLevel - 1) else 0
@@ -389,7 +422,6 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     override fun onRecordingStopped() = refresh()
 
-    override fun onCropsChanged() = updateOverlay()
 
     companion object {
         private const val REQ_SCREEN = 2

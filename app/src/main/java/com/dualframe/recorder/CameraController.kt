@@ -40,7 +40,6 @@ class CameraController(private val context: Context) {
         fun onNotice(text: String)
         fun onSaved(uris: List<Uri>, ok: Boolean)
         fun onRecordingStopped()
-        fun onCropsChanged() // frame positions moved by panning
     }
 
     var listener: Listener? = null
@@ -55,8 +54,6 @@ class CameraController(private val context: Context) {
     var portraitX = 0.5f; private set
     var portraitY = 0.5f; private set
     var landscapeY = 0.5f; private set
-    var panning = false; private set
-    var panSpeed = 0.2f; private set // sweeps per second
 
     private val manager = context.getSystemService(CameraManager::class.java)
     private val main = Handler(Looper.getMainLooper())
@@ -75,20 +72,6 @@ class CameraController(private val context: Context) {
     var hasFlash = false; private set
     /** Highest torch brightness step this camera accepts; 1 means brightness can't be changed. */
     var maxTorchLevel = 1; private set
-    private var panPhase = 0f
-    private var lastPanTick = 0L
-    private val panTick = object : Runnable {
-        override fun run() {
-            val now = SystemClock.uptimeMillis()
-            panPhase += panSpeed * (now - lastPanTick) / 1000f
-            lastPanTick = now
-            portraitX = pingPong(panPhase)
-            landscapeY = portraitX
-            applyCrops()
-            listener?.onCropsChanged()
-            main.postDelayed(this, 33)
-        }
-    }
     private var bootClock = false
     private var recorder: Recorder? = null
     val recording get() = recorder != null
@@ -198,7 +181,6 @@ class CameraController(private val context: Context) {
     }
 
     fun release() {
-        main.removeCallbacks(panTick)
         close()
         photoThread.quitSafely()
     }
@@ -212,18 +194,7 @@ class CameraController(private val context: Context) {
     fun setTorch(value: Boolean) { torch = value; updateRequest() }
     fun setTorchLevel(value: Int) { torchLevel = value.coerceIn(1, maxTorchLevel); updateRequest() }
 
-    /** Panning sweeps portrait left-right and landscape top-bottom on its own; runs in the background too. */
-    fun setPan(on: Boolean, sweepsPerSecond: Float) {
-        panSpeed = sweepsPerSecond
-        if (on == panning) return
-        panning = on
-        main.removeCallbacks(panTick)
-        if (on) {
-            panPhase = portraitX // continue from where the portrait frame is now
-            lastPanTick = SystemClock.uptimeMillis()
-            main.post(panTick)
-        }
-    }
+
     fun setPositions(portraitX: Float, portraitY: Float, landscapeY: Float) {
         this.portraitX = portraitX.coerceIn(0f, 1f)
         this.portraitY = portraitY.coerceIn(0f, 1f)
