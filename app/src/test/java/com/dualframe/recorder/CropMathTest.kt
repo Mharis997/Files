@@ -37,6 +37,12 @@ class CropMathTest {
         assertEquals(0f, lBottom.x, 1e-5f) // landscape always spans the full width
     }
 
+    @Test fun fullFrameSize_capsLongSideAt1920KeepingAspect() {
+        assertEquals(1440 to 1920, fullFrameSize(3000, 4000))
+        assertEquals(1440 to 1920, fullFrameSize(1920, 2560))
+        assertEquals(1080 to 1440, fullFrameSize(1080, 1440)) // never upscales
+    }
+
     @Test fun chooseSourceSize_picksSmallestAtLeast1920() =
         assertEquals((2560 to 1920) to false,
             chooseSourceSize(listOf(4000 to 3000, 2560 to 1920, 1440 to 1080, 1920 to 1080), 30) { 33_333_333L })

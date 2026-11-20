@@ -80,3 +80,9 @@ fun screenBox(left: Int, top: Int, right: Int, bottom: Int, screenW: Int, cropTo
     left.toFloat() / screenW, 1f - (bottom - cropTop).toFloat() / cropH,
     (right - left).toFloat() / screenW, (bottom - top).toFloat() / cropH,
 )
+
+/** Output size for recording the whole upright frame: long side at most 1920, sides multiples of 8, never upscaled. */
+fun fullFrameSize(uprightW: Int, uprightH: Int): Pair<Int, Int> {
+    val scale = minOf(1f, 1920f / maxOf(uprightW, uprightH))
+    return ((uprightW * scale).roundToInt() / 8 * 8) to ((uprightH * scale).roundToInt() / 8 * 8)
+}

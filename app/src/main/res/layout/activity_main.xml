@@ -169,6 +169,7 @@
         <LinearLayout android:id="@+id/panRow" style="@style/SliderRow" android:visibility="gone">
             <TextView style="@style/SliderLabel" android:text="Target speed" android:textColor="#FFFFFFFF" />
             <SeekBar android:id="@+id/seekPan" style="@style/Slider" android:contentDescription="Target pan speed" />
+            <TextView android:id="@+id/panValue" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end" android:textColor="#FFFFFFFF" android:textSize="13sp" android:fontFeatureSettings="tnum" android:text="120°/s" />
         </LinearLayout>
 
         <LinearLayout

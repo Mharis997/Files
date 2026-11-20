@@ -72,7 +72,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
             val s = (binder as RecordService.LocalBinder).service
             service = s
             s.ui = this@MainActivity
-            if (s.screen != null) tab = TAB_SCREEN
+            if (s.screen != null) tab = TAB_SCREEN else if (s.camera.fullFrame) tab = TAB_PAN
+            s.camera.setFullFrame(tab == TAB_PAN) // a fresh service starts in two-crop mode
             startPendingScreen()
             updateSensors()
             if (cameraTab && hasPerms()) openCamera()
@@ -147,7 +148,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
                 when (bar) {
                     seekBlur -> pushBlur()
                     seekFlash -> cam?.let { it.setTorchLevel(1 + value * (it.maxTorchLevel - 1) / 100) }
-                    seekPan -> panGuide.targetSpeed = targetSpeed()
+                    seekPan -> showTargetSpeed()
                 }
             }
             override fun onStartTrackingTouch(bar: SeekBar) = Unit
@@ -223,11 +224,12 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         tab = to
         infoPanel.visibility = View.GONE
         updateSensors()
+        s.camera.setFullFrame(to == TAB_PAN)
         if (cameraTab) { if (hasPerms()) openCamera() } else s.camera.close()
         refresh()
     }
 
-    private fun targetSpeed() = 5f + seekPan.progress * 0.55f // 5..60 deg/s
+    private fun targetSpeed() = 60f + seekPan.progress * 1.2f // 60..180 deg/s
 
     /** Gyro and gravity run only while the PAN tab is on screen. */
     private fun updateSensors() {
@@ -236,10 +238,15 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         val gyro = sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
             ?: return onNotice("This phone has no gyroscope, so the pan guide can't run.")
         panGuide.meter = PanMeter()
-        panGuide.targetSpeed = targetSpeed()
+        showTargetSpeed()
         lastGyroNs = 0L
         sensors.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME)
         sensors.getDefaultSensor(Sensor.TYPE_GRAVITY)?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+    }
+
+    private fun showTargetSpeed() {
+        panGuide.targetSpeed = targetSpeed()
+        findViewById<TextView>(R.id.panValue).text = "${targetSpeed().toInt()}°/s"
     }
 
     override fun onSensorChanged(e: SensorEvent) {
@@ -347,6 +354,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         landscapeSlider.visibility = joystick.visibility
         findViewById<View>(R.id.panRow).visibility = if (tab == TAB_PAN) View.VISIBLE else View.GONE
         panGuide.visibility = if (tab == TAB_PAN) View.VISIBLE else View.GONE
+        overlay.visibility = if (tab == TAB_PAN) View.GONE else View.VISIBLE // full view, no crop frames
         fpsChip.visibility = if (cameraTab) View.VISIBLE else View.INVISIBLE
         seekFlash.visibility = if (cameraTab && c.torch && c.maxTorchLevel > 1) View.VISIBLE else View.INVISIBLE
         seekFlash.progress = if (c.maxTorchLevel > 1) (c.torchLevel - 1) * 100 / (c.maxTorchLevel - 1) else 0

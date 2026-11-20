@@ -54,6 +54,8 @@ class CameraController(private val context: Context) {
     var portraitX = 0.5f; private set
     var portraitY = 0.5f; private set
     var landscapeY = 0.5f; private set
+    /** PAN tab: record and photograph the whole camera view instead of the two crops. */
+    var fullFrame = false; private set
 
     private val manager = context.getSystemService(CameraManager::class.java)
     private val main = Handler(Looper.getMainLooper())
@@ -195,6 +197,12 @@ class CameraController(private val context: Context) {
     fun setTorchLevel(value: Int) { torchLevel = value.coerceIn(1, maxTorchLevel); updateRequest() }
 
 
+    fun setFullFrame(value: Boolean) {
+        if (recording) return
+        fullFrame = value
+        applyCrops()
+    }
+
     fun setPositions(portraitX: Float, portraitY: Float, landscapeY: Float) {
         this.portraitX = portraitX.coerceIn(0f, 1f)
         this.portraitY = portraitY.coerceIn(0f, 1f)
@@ -207,7 +215,7 @@ class CameraController(private val context: Context) {
     private fun applyCrops() {
         val (p, l) = currentCrops()
         // the preview is mirrored for the front camera; files are not
-        renderer?.setCrops(FULL, listOf(p, l), mirrorOutputs = front)
+        renderer?.setCrops(FULL, if (fullFrame) listOf(FULL) else listOf(p, l), mirrorOutputs = front)
     }
 
     private fun fpsRange() = chars?.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.let { r ->
@@ -236,8 +244,9 @@ class CameraController(private val context: Context) {
         val r = renderer ?: return false
         if (recording || photoMode) return false
         lateinit var rec: Recorder
-        rec = Recorder(context, listOf(VideoSpec("portrait", 1080, 1920), VideoSpec("landscape", 1920, 1080)),
-            fps, bootClock, null) { uris, ok ->
+        val specs = if (fullFrame) fullFrameSize(upright.first, upright.second).let { (w, h) -> listOf(VideoSpec("full", w, h)) }
+            else listOf(VideoSpec("portrait", 1080, 1920), VideoSpec("landscape", 1920, 1080))
+        rec = Recorder(context, specs, fps, bootClock, null) { uris, ok ->
             listener?.onSaved(uris, ok)
             if (recorder === rec) { // an encoder failed mid-take: the recorder already cleaned up
                 recorder = null
@@ -285,7 +294,8 @@ class CameraController(private val context: Context) {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val uris = ArrayList<Uri>()
         @Suppress("DEPRECATION") val decoder = BitmapRegionDecoder.newInstance(bytes, 0, bytes.size, false)!!
-        for ((name, crop0) in listOf("portrait" to p, "landscape" to l)) {
+        val parts = if (fullFrame) listOf("full" to FULL) else listOf("portrait" to p, "landscape" to l)
+        for ((name, crop0) in parts) {
             // crops are set on the preview, which is mirrored for the front camera; the JPEG is not
             val crop = if (front) crop0.copy(x = 1f - crop0.x - crop0.w) else crop0
             val r = sensorRect(crop, orientation, w, h)
@@ -297,7 +307,7 @@ class CameraController(private val context: Context) {
             part.recycle()
         }
         decoder.recycle()
-        main.post { listener?.onSaved(uris, uris.size == 2) }
+        main.post { listener?.onSaved(uris, uris.size == parts.size) }
     }
 
     private fun saveJpeg(bmp: Bitmap, fileName: String): Uri? {
