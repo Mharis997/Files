@@ -2,8 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
-    android:clipChildren="false">
+    android:background="#000000">
 
     <!-- Height set in code to the camera's upright aspect: the full view, with both frames drawn over it. -->
     <FrameLayout
@@ -23,21 +22,29 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
+        <com.dualframe.recorder.LevelView
+            android:id="@+id/level"
+            android:layout_width="96dp"
+            android:layout_height="28dp"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="8dp" />
+
         <com.dualframe.recorder.LineSlider
             android:id="@+id/landscapeSlider"
             android:layout_width="40dp"
-            android:layout_height="240dp"
-            android:layout_gravity="start|center_vertical"
+            android:layout_height="200dp"
+            android:layout_gravity="start|bottom"
             android:layout_marginHorizontal="8dp"
+            android:layout_marginBottom="8dp"
             android:contentDescription="Moves the landscape frame" />
 
-        <!-- Portrait frame controls; the whole group turns with the phone. Sliders move along one direction only. -->
+        <!-- Portrait frame controls, low for the right thumb. The sliders move along one direction only. -->
         <LinearLayout
-            android:id="@+id/joyCluster"
             android:layout_width="144dp"
             android:layout_height="144dp"
-            android:layout_gravity="end|center_vertical"
+            android:layout_gravity="end|bottom"
             android:layout_marginHorizontal="4dp"
+            android:layout_marginBottom="4dp"
             android:orientation="vertical">
 
             <LinearLayout
@@ -149,7 +156,6 @@
     <!-- Bottom: camera controls -->
     <LinearLayout
         android:id="@+id/cameraControls"
-        android:clipChildren="false"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
@@ -159,7 +165,6 @@
 
         <LinearLayout
             android:id="@+id/lenses"
-            android:clipChildren="false"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/pill"
@@ -170,14 +175,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:background="@drawable/pill"
-            android:clipChildren="false"
             android:padding="3dp">
 
             <TextView android:id="@+id/modePhoto" style="@style/Chip" android:text="PHOTO" />
             <TextView android:id="@+id/modeVideo" style="@style/Chip" android:text="VIDEO" />
         </LinearLayout>
 
-        <LinearLayout style="@style/ShutterRow" android:clipChildren="false">
+        <LinearLayout style="@style/ShutterRow">
             <ImageButton android:id="@+id/info" style="@style/RoundIcon" android:contentDescription="Camera capabilities" android:src="@drawable/ic_info" />
             <FrameLayout android:id="@+id/shutter" style="@style/Shutter" android:contentDescription="Record">
                 <View android:id="@+id/shutterInner" style="@style/ShutterInner" />

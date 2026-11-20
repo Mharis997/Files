@@ -68,29 +68,9 @@ fun recordedFraction(p: Crop, l: Crop): Float {
     return p.w * p.h + l.w * l.h - ox * oy
 }
 
-/** Rotates a screen vector (y down) clockwise by [deg], a multiple of 90: how a view rotated by [deg] maps its axes to the screen. */
-fun rotateVec(x: Float, y: Float, deg: Int): Pair<Float, Float> = when ((deg % 360 + 360) % 360) {
-    90 -> -y to x
-    180 -> -x to -y
-    270 -> y to -x
-    else -> x to y
-}
-
 /**
- * Snaps an OrientationEventListener angle (-1 = unknown) to 0/90/180/270. Within 30 degrees of a quarter turn
- * it switches; in between it keeps [current], so the controls don't flicker near 45 degrees.
+ * Horizon tilt in degrees from gravity on the screen's x/y axes: 0 when the upright phone is level.
+ * NaN when the phone lies too flat for the reading to mean anything.
  */
-fun snapOrientation(deg: Int, current: Int): Int {
-    if (deg < 0) return current
-    val nearest = (deg + 45) / 90 * 90 % 360
-    val diff = Math.abs(deg - nearest).let { minOf(it, 360 - it) }
-    return if (diff <= 30) nearest else current
-}
-
-/** View rotation that keeps a control upright for the user when the phone is at [orientation]. */
-fun viewRotationFor(orientation: Int) = when (orientation) {
-    90 -> -90
-    180 -> 180
-    270 -> 90
-    else -> 0
-}
+fun levelDegrees(gx: Float, gy: Float): Float =
+    if (gx * gx + gy * gy < 9f) Float.NaN else Math.toDegrees(kotlin.math.atan2(gx.toDouble(), gy.toDouble())).toFloat()

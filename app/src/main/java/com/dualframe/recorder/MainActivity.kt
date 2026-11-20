@@ -7,6 +7,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.graphics.drawable.GradientDrawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,14 +18,11 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
-import android.view.Gravity
-import android.view.OrientationEventListener
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
 import android.widget.Chronometer
-import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -29,7 +30,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 
-class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listener {
+class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listener, SensorEventListener {
     private val perms = listOfNotNull(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO,
         if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null).toTypedArray()
     private val main = Handler(Looper.getMainLooper())
@@ -47,16 +48,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
     private lateinit var landscapeSlider: LineSlider
     private lateinit var portraitH: LineSlider
     private lateinit var portraitV: LineSlider
-    private lateinit var joyCluster: View
-    private var orientation = 0 // how the phone is held: 0/90/180/270
-    private val tilt by lazy {
-        object : OrientationEventListener(this) {
-            override fun onOrientationChanged(deg: Int) {
-                val o = snapOrientation(deg, orientation)
-                if (o != orientation) { orientation = o; applyTilt() }
-            }
-        }
-    }
+    private lateinit var levelView: LevelView
+    private lateinit var sensors: SensorManager
     private lateinit var seekFlash: SeekBar
     private lateinit var shutterInner: View
 
@@ -93,7 +86,8 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         landscapeSlider = findViewById(R.id.landscapeSlider)
         portraitH = findViewById(R.id.portraitH)
         portraitV = findViewById(R.id.portraitV)
-        joyCluster = findViewById(R.id.joyCluster)
+        levelView = findViewById(R.id.level)
+        sensors = getSystemService(SensorManager::class.java)
         seekFlash = findViewById(R.id.seekFlash)
         shutterInner = findViewById(R.id.shutterInner)
         preview.holder.addCallback(this)
@@ -139,14 +133,14 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
         joystick.onMove = { dx, dy, dt ->
             cam?.let {
                 val step = 0.8f * dt // full sweep in about 1.25 s at full tilt
-                // the joystick turns with the phone: map its directions back to the screen's axes
-                val (sx, sy) = rotateVec(dx, dy, viewRotationFor(orientation))
-                it.setPositions(it.portraitX + sx * step, it.portraitY + sy * step, it.landscapeY)
+                it.setPositions(it.portraitX + dx * step, it.portraitY + dy * step, it.landscapeY)
                 updateOverlay()
             }
         }
-        bindAxis(portraitH, 1f, 0f)
-        bindAxis(portraitV, 0f, 1f)
+        portraitH.color = 0xFF4D8DFF.toInt()
+        portraitV.color = 0xFF4D8DFF.toInt()
+        portraitH.onChange = { v -> cam?.let { it.setPositions(v, it.portraitY, it.landscapeY); updateOverlay() } }
+        portraitV.onChange = { v -> cam?.let { it.setPositions(it.portraitX, v, it.landscapeY); updateOverlay() } }
         landscapeSlider.onChange = { v ->
             cam?.let { it.setPositions(it.portraitX, it.portraitY, v); updateOverlay() }
         }
@@ -156,13 +150,19 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     override fun onResume() {
         super.onResume()
-        if (tilt.canDetectOrientation()) tilt.enable()
+        val gravity = sensors.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        if (gravity != null) sensors.registerListener(this, gravity, SensorManager.SENSOR_DELAY_UI)
+        else levelView.visibility = View.GONE
     }
 
     override fun onPause() {
-        tilt.disable()
+        sensors.unregisterListener(this)
         super.onPause()
     }
+
+    override fun onSensorChanged(e: SensorEvent) = levelView.update(levelDegrees(e.values[0], e.values[1]))
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     override fun onStart() {
         super.onStart()
@@ -230,55 +230,13 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 
-    /** Which portrait coordinate a group slider moves once the group is turned: (moves x?, direction). */
-    private fun axisOf(localX: Float, localY: Float): Pair<Boolean, Float> {
-        val (dx, dy) = rotateVec(localX, localY, viewRotationFor(orientation))
-        return if (dx != 0f) true to dx else false to dy
-    }
-
-    private fun bindAxis(slider: LineSlider, localX: Float, localY: Float) {
-        slider.color = 0xFF4D8DFF.toInt()
-        slider.onChange = { v ->
-            cam?.let { c ->
-                val (isX, dir) = axisOf(localX, localY)
-                val pos = if (dir > 0) v else 1 - v
-                if (isX) c.setPositions(pos, c.portraitY, c.landscapeY) else c.setPositions(c.portraitX, pos, c.landscapeY)
-                updateOverlay()
-            }
-        }
-    }
-
-    private fun axisValue(localX: Float, localY: Float, c: CameraController): Float {
-        val (isX, dir) = axisOf(localX, localY)
-        val pos = if (isX) c.portraitX else c.portraitY
-        return if (dir > 0) pos else 1 - pos
-    }
-
-    /** Turns icons and labels upright for how the phone is held; sideways, the joystick group goes to the bottom side. */
-    private fun applyTilt() {
-        cam?.deviceRotation = orientation
-        val r = viewRotationFor(orientation).toFloat()
-        val turning = listOf(flash, fpsChip, timer, findViewById(R.id.info), findViewById(R.id.flip),
-            findViewById(R.id.modePhoto), findViewById<View>(R.id.modeVideo), joyCluster) +
-            (0 until lensRow.childCount).map { lensRow.getChildAt(it) }
-        for (v in turning) v.animate().rotation(r).setDuration(200).start()
-        val swap = orientation == 270 // right side up: the screen's left edge is now the bottom
-        (joyCluster.layoutParams as FrameLayout.LayoutParams).gravity =
-            (if (swap) Gravity.START else Gravity.END) or Gravity.CENTER_VERTICAL
-        (landscapeSlider.layoutParams as FrameLayout.LayoutParams).gravity =
-            (if (swap) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL
-        joyCluster.requestLayout()
-        landscapeSlider.requestLayout()
-        updateOverlay()
-    }
-
     private fun updateOverlay() {
         val c = cam ?: return
         val (p, l) = c.currentCrops()
         overlay.setCrops(p, l)
         landscapeSlider.value = c.landscapeY
-        portraitH.value = axisValue(1f, 0f, c)
-        portraitV.value = axisValue(0f, 1f, c)
+        portraitH.value = c.portraitX
+        portraitV.value = c.portraitY
     }
 
     /** Syncs every control with the service's state. */
@@ -331,7 +289,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback, CameraController.Listen
                 setOnClickListener { cam?.setZoom(z); refresh() }
             })
         }
-        applyTilt() // also turns the new lens chips
+        updateOverlay()
         refresh()
     }
 

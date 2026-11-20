@@ -25,8 +25,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** [rotation]: degrees players turn the video clockwise, so a take shot with the phone sideways plays upright. */
-data class VideoSpec(val name: String, val width: Int, val height: Int, val rotation: Int = 0)
+data class VideoSpec(val name: String, val width: Int, val height: Int)
 
 /**
  * One H.264 encoder per [VideoSpec] and one AAC encoder (mic) whose samples go into every file.
@@ -109,7 +108,6 @@ class Recorder(
         }
         val surfaces = specs.map { spec ->
             val out = Output(spec.name, stamp).also { outputs += it }
-            out.muxer.setOrientationHint(spec.rotation)
             out.encoder = videoEncoder(spec.width, spec.height, out)
             Triple(out.encoder!!.createInputSurface(), spec.width, spec.height)
         }
