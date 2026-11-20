@@ -4,3 +4,7 @@ local.properties
 .superpowers/
 *.apk
 !release/*.apk
+upload.jks
+keystore.properties
+*.aab
+!release/*.aab
